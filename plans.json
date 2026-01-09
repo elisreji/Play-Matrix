@@ -1,0 +1,48 @@
+[
+    {
+        "id": "Free",
+        "name": "FREE PLAN",
+        "badge": "🟢",
+        "price": "0.00",
+        "features": [
+            "View sports venues",
+            "Join open plays",
+            "View tournaments and events",
+            "Book standard activities"
+        ]
+    },
+    {
+        "id": "Silver",
+        "name": "SILVER PLAN",
+        "badge": "🥈",
+        "price": "9.99",
+        "features": [
+            "Priority booking",
+            "Discounted activity fees",
+            "Early access to tournaments"
+        ]
+    },
+    {
+        "id": "Gold",
+        "name": "GOLD PLAN",
+        "badge": "🥇",
+        "price": "24.99",
+        "features": [
+            "All Silver benefits",
+            "Exclusive coaching classes",
+            "Premium trainer sessions"
+        ]
+    },
+    {
+        "id": "Platinum",
+        "name": "PLATINUM PLAN",
+        "badge": "💎",
+        "price": "49.99",
+        "features": [
+            "All Gold benefits",
+            "Special adventure packages",
+            "VIP tournament access",
+            "Premium fitness & coaching programs"
+        ]
+    }
+]

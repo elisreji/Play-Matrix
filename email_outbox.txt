@@ -1,0 +1,73 @@
+--------------------------------
+To: elisreji2028@mca.ajce.in
+Subject: Password Reset Request
+Message: Click the link below to reset your password:
+http://localhost/playmatrix/reset_password.php?token=1d2c5ce83d5a25aa14aef6d4d3d2291390bb74881ddbcd6666c11caf1ede39e3dfd118691f7fbf5b081cd91b68d260e804ad
+--------------------------------
+
+================================
+Date: 2025-12-21 11:49:50
+To: elisreji2028@mca.ajce.in
+From: elisreji2028@mca.ajce.in
+Subject: Password Reset Request - PlayMatrix
+Status: SAVED TO FILE ONLY
+--------------------------------
+Reset Link:
+http://localhost/playmatrix/reset_password.php?token=fb47fb73d82fe4406006d9f2a8025adb8013708070442adfff0c810efbc19b7de81e65538903be8b7140ecb629a9f4731ee3
+================================
+
+================================
+Date: 2025-12-21 11:50:55
+To: elisreji2028@mca.ajce.in
+From: elisreji2028@mca.ajce.in
+Subject: Password Reset Request - PlayMatrix
+Status: SAVED TO FILE ONLY
+--------------------------------
+Reset Link:
+http://localhost/playmatrix/reset_password.php?token=2850ea6561633a078904ec778fba413b257a2dff67641c8539c7f6aef9ccc82483f291864d8eb61202fd00745a4b25926491
+================================
+
+================================
+Date: 2025-12-21 11:51:05
+To: elisreji2028@mca.ajce.in
+From: elisreji2028@mca.ajce.in
+Subject: Password Reset Request - PlayMatrix
+Status: SAVED TO FILE ONLY
+--------------------------------
+Reset Link:
+http://localhost/playmatrix/reset_password.php?token=74984b1f89b3e84a878326f001d8af4ad72a0aab6f8f6bf7208201d0f1c7da6f1ff1341e1582c9dbd34bd2606cce591ba243
+================================
+
+================================
+PASSWORD RESET EMAIL
+================================
+To: elisreji2028@mca.ajce.in
+Subject: Password Reset Request - PlayMatrix
+
+Click this link to reset your password:
+http://localhost/playmatrix/reset_password.php?token=246266634c4faed78c35596f859d8675b5436999552fd83a2f5917b11be7f997fa0bc901d0211e2f1e878986dd8ce3df179f
+
+================================
+
+================================
+PASSWORD RESET EMAIL
+================================
+To: elisreji2028@mca.ajce.in
+Subject: Password Reset Request - PlayMatrix
+
+Click this link to reset your password:
+http://localhost/playmatrix/reset_password.php?token=07f9baa55a2ccca24103ad8da4d400d2e843659159381850619cdd77bc723019b0894bb70a82f64d15d922578486fcd28cbb
+
+================================
+
+================================
+PASSWORD RESET EMAIL
+================================
+To: elisreji2028@mca.ajce.in
+Subject: Password Reset Request - PlayMatrix
+
+Click this link to reset your password:
+http://localhost/playmatrix/reset_password.php?token=5ff0ce522520e21c4f4419cfe6a514878beec57905e4fa1aeaa42e6805b2288cf0e3d26ab8a46a93d2877752ed5f1df31961
+
+================================
+

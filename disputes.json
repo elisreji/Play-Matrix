@@ -1,0 +1,16 @@
+[
+    {
+        "id": "T-89241",
+        "reported_by": "Alan Thomas",
+        "category": "Refund Request",
+        "priority": "High",
+        "status": "Pending"
+    },
+    {
+        "id": "T-90112",
+        "reported_by": "Sarah Connor",
+        "category": "Technical Issue",
+        "priority": "Medium",
+        "status": "Resolved"
+    }
+]
