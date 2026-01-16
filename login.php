@@ -30,18 +30,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($userFound && password_verify($password, $userFound['password'])) {
+    // Check if user is blocked BEFORE password verification
+    if ($userFound && isset($userFound['is_blocked']) && (int) $userFound['is_blocked'] === 1) {
+        $error = "Your account has been blocked by the administrator. Please contact support for assistance.";
+    } elseif ($userFound && password_verify($password, $userFound['password'])) {
         if (isset($userFound['is_verified']) && (int) $userFound['is_verified'] === 0) {
             $error = "Please verify your email address before logging in.";
-        } elseif (isset($userFound['is_blocked']) && (int) $userFound['is_blocked'] === 1) {
-            $error = "Your account has been suspended. Please contact administration.";
         } else {
             $_SESSION['user'] = $userFound['email'];
             $adminEmails = ['elisreji2028@mca.ajce.in', 'junaelsamathew2028@mca.ajce.in'];
             if (in_array($userFound['email'], $adminEmails) || (isset($userFound['role']) && $userFound['role'] === 'Admin')) {
                 header("Location: admin.php");
             } else {
-                header("Location: dashboard.php");
+                header("Location: 2.php");
             }
             exit;
         }

@@ -17,25 +17,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!is_array($users))
             $users = [];
 
-        // Check availability
+        // Check availability and blocked status
         $exists = false;
+        $isBlocked = false;
+
         if ($pdo) {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM USERS WHERE email = ?");
+            $stmt = $pdo->prepare("SELECT is_blocked FROM USERS WHERE email = ?");
             $stmt->execute([$email]);
-            if ($stmt->fetchColumn() > 0)
+            $result = $stmt->fetch();
+            if ($result) {
                 $exists = true;
+                $isBlocked = (int) $result['is_blocked'] === 1;
+            }
         }
 
         if (!$exists) {
             foreach ($users as $user) {
                 if (strtolower(trim($user['email'])) === $email) {
                     $exists = true;
+                    $isBlocked = isset($user['is_blocked']) && $user['is_blocked'];
                     break;
                 }
             }
         }
 
-        if ($exists) {
+        if ($isBlocked) {
+            $error = "This account has been blocked. Please contact administration.";
+        } elseif ($exists) {
             $error = "Email already registered";
         } else {
             $otp = rand(100000, 999999);
@@ -630,6 +638,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <div class="plan-header">
                                     <span class="plan-badge"><?php echo $plan['badge']; ?></span>
                                     <span class="plan-name"><?php echo $plan['name']; ?></span>
+                                </div>
+                                <div
+                                    style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.8rem; color: var(--text-white);">
+                                    ₹<?php echo $plan['price']; ?><span
+                                        style="font-size: 0.75rem; color: var(--text-gray); font-weight: 400;">/mo</span>
                                 </div>
                                 <ul class="plan-features">
                                     <?php foreach ($plan['features'] as $feature): ?>

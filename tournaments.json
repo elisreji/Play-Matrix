@@ -1,0 +1,26 @@
+[
+    {
+        "id": "t1",
+        "name": "Summer Smash Cricket",
+        "type": "Tournament",
+        "organizer": "Global Sports Club",
+        "venue": "Golden Strike Turf",
+        "date": "2026-02-15",
+        "max_participants": 16,
+        "entry_fee": "\u20b9500",
+        "status": "Approved",
+        "description": "Annual cricket tournament for local clubs."
+    },
+    {
+        "id": "e1",
+        "name": "Matrix Fitness Workshop",
+        "type": "Event",
+        "organizer": "FitZone India",
+        "venue": "Dynamic Fitness Hub",
+        "date": "2026-01-25",
+        "max_participants": 50,
+        "entry_fee": "Free",
+        "status": "Pending",
+        "description": "A high-intensity fitness session with celebrity trainers."
+    }
+]

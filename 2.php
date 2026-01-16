@@ -608,8 +608,8 @@
             </div>
 
             <div class="nav-links">
-                <a href="#" class="nav-link">Play</a>
-                <a href="#" class="nav-link active">Book</a>
+                <a href="play.php" class="nav-link">Play</a>
+                <a href="2.php" class="nav-link active">Book</a>
                 <a href="#" class="nav-link">Trainer</a>
             </div>
         </div>
@@ -736,13 +736,13 @@
 
         function toggleMap() {
             document.getElementById('map-container').classList.toggle('active');
-            if(mainMap) mainMap.invalidateSize();
+            if (mainMap) mainMap.invalidateSize();
         }
 
         // Initialize Free Leaflet Map
         function initMap() {
             mapInitialized = true;
-            
+
             mainMap = L.map('map', {
                 zoomControl: false,
                 attributionControl: false
@@ -759,7 +759,7 @@
         function searchByCityName(cityName) {
             const locationBox = document.querySelector('.location-box');
             locationBox.classList.add('searching');
-            
+
             fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cityName)}&limit=1`)
                 .then(res => res.json())
                 .then(data => {
@@ -780,7 +780,7 @@
 
         function detectLocation() {
             citySearchInput.value = "Detecting...";
-            
+
             fetch("https://ipapi.co/json/")
                 .then(res => res.json())
                 .then(data => {
@@ -798,7 +798,7 @@
 
             const locationBox = document.querySelector('.location-box');
             locationBox.classList.add('searching');
-            
+
             container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 3rem; color:var(--primary-green); font-weight:700;"><i class="fa-solid fa-circle-notch fa-spin"></i> Finding turfs on OpenStreetMap...</div>';
             loadMoreBtn.style.display = 'none';
 
@@ -819,7 +819,7 @@
                 .then(res => res.json())
                 .then(data => {
                     locationBox.classList.remove('searching');
-                    processOSMResults(data.elements, {lat, lng});
+                    processOSMResults(data.elements, { lat, lng });
                 })
                 .catch(err => {
                     locationBox.classList.remove('searching');
@@ -846,12 +846,12 @@
             elements.forEach((el, i) => {
                 const elLat = el.lat || el.center.lat;
                 const elLon = el.lon || el.center.lon;
-                
+
                 const dist = calculateDistance(userLoc.lat, userLoc.lng, elLat, elLon).toFixed(1);
-                
+
                 const name = el.tags.name || `${el.tags.sport || 'Sports'} Arena`;
                 const sport = el.tags.sport ? el.tags.sport.charAt(0).toUpperCase() + el.tags.sport.slice(1) : "Sports";
-                
+
                 allVenues.push({
                     id: el.id,
                     name: name,
@@ -873,7 +873,7 @@
                     opacity: 1,
                     fillOpacity: 1
                 }).addTo(mainMap);
-                
+
                 marker.bindPopup(`<b>${name}</b><br>${sport}`);
                 markers.push(marker);
             });
@@ -885,9 +885,9 @@
             renderBatch();
         }
 
-            if (tStr.includes('football') || tStr.includes('turf') || tStr.includes('stadium')) return "Football";
-            if (tStr.includes('gym') || tStr.includes('fitness') || tStr.includes('health')) return "Fitness";
-            return "Sports";
+        if (tStr.includes('football') || tStr.includes('turf') || tStr.includes('stadium')) return "Football";
+        if (tStr.includes('gym') || tStr.includes('fitness') || tStr.includes('health')) return "Fitness";
+        return "Sports";
         }
 
         function updateLocationUI(cityName) {

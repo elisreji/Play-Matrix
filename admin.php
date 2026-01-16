@@ -10,6 +10,16 @@ if (!isset($_SESSION['user']) || !in_array($_SESSION['user'], $adminEmails)) {
 }
 $currentUser = $_SESSION['user'];
 
+// Handle Lockdown Toggle
+$settingsFile = 'settings.json';
+$settings = file_exists($settingsFile) ? json_decode(file_get_contents($settingsFile), true) : ['lockdown_mode' => false];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_lockdown') {
+    $settings['lockdown_mode'] = !($settings['lockdown_mode']);
+    file_put_contents($settingsFile, json_encode($settings, JSON_PRETTY_PRINT));
+    $successMessage = $settings['lockdown_mode'] ? "Platform LOCKED DOWN!" : "Platform RESTORED!";
+}
+
 // Handle Plan Updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_plan') {
     $planId = $_POST['plan_id'];
@@ -46,10 +56,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($pdo) {
             try {
                 if ($action === 'delete_user' && $userEmail !== $currentUser) {
+                    // Completely delete user - they can register again as new member
                     $stmt = $pdo->prepare("DELETE FROM USERS WHERE email = ?");
                     $stmt->execute([$userEmail]);
                     $updated = true;
                 } elseif ($action === 'toggle_block' && $userEmail !== $currentUser) {
+                    // Toggle block status - blocked users cannot login or register
                     $stmt = $pdo->prepare("UPDATE USERS SET is_blocked = NOT is_blocked WHERE email = ?");
                     $stmt->execute([$userEmail]);
                     $updated = true;
@@ -66,13 +78,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         foreach ($users as $key => &$user) {
             if ($user['email'] === $userEmail) {
                 if ($action === 'delete_user' && $userEmail !== $currentUser) {
+                    // Completely remove from JSON - allows re-registration
                     unset($users[$key]);
                     $users = array_values($users);
-                    $successMessage = "User deleted successfully!";
+                    $successMessage = "User deleted successfully! They can now register as a new member.";
                     $updated = true;
                 } elseif ($action === 'toggle_block' && $userEmail !== $currentUser) {
+                    // Toggle block - prevents login and registration
                     $user['is_blocked'] = !(isset($user['is_blocked']) && $user['is_blocked']);
-                    $successMessage = $user['is_blocked'] ? "User blocked!" : "User unblocked!";
+                    $successMessage = $user['is_blocked'] ? "User blocked! They cannot login or register." : "User unblocked! They can now access the platform.";
                     $updated = true;
                 } elseif ($action === 'update_user') {
                     $user['name'] = $_POST['name'] ?? $user['name'];
@@ -162,28 +176,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Handle Tournament/Event Actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array($_POST['action'], ['approve_tournament', 'reject_tournament'])) {
+    $tournamentId = $_POST['tournament_id'] ?? '';
+    $action = $_POST['action'];
+    $status = ($action === 'approve_tournament') ? 'Approved' : 'Rejected';
+    $updated = false;
+
+    // 1. Sync Database
+    if ($pdo) {
+        try {
+            $stmt = $pdo->prepare("UPDATE TOURNAMENTS SET admin_approval = ? WHERE tournament_id = ?");
+            $stmt->execute([$status, $tournamentId]);
+            $updated = true;
+        } catch (Exception $e) {
+        }
+    }
+
+    // 2. Sync JSON
+    $tournamentsFile = 'tournaments.json';
+    if (file_exists($tournamentsFile)) {
+        $tournaments = json_decode(file_get_contents($tournamentsFile), true);
+        foreach ($tournaments as &$t) {
+            if ($t['id'] == $tournamentId) {
+                $t['status'] = $status;
+                $updated = true;
+                break;
+            }
+        }
+        if ($updated) {
+            file_put_contents($tournamentsFile, json_encode($tournaments, JSON_PRETTY_PRINT));
+        }
+    }
+
+    if ($updated) {
+        $successMessage = ($action === 'approve_tournament') ? "Tournament/Event approved!" : "Tournament/Event rejected!";
+    }
+}
+
 
 // Fetch some initial data if DB exists
 $usersCount = 0;
-$venuesPending = 0;
+$tournamentsPending = 0;
 $totalBookings = 0;
 $revenue = 0;
 
 if ($pdo) {
     try {
         $usersCount = $pdo->query("SELECT COUNT(*) FROM USERS")->fetchColumn();
-        $venuesPending = $pdo->query("SELECT COUNT(*) FROM VENUES WHERE admin_approval = 'Pending'")->fetchColumn();
+        $tournamentsPending = $pdo->query("SELECT COUNT(*) FROM TOURNAMENTS WHERE admin_approval = 'Pending'")->fetchColumn();
     } catch (Exception $e) {
-        // Fallback or ignore if tables don't exist yet
     }
 }
 
-// If user count is 0, maybe check users.json
+// Check tournaments.json for pending count if DB count is 0
+if ($tournamentsPending == 0 && file_exists('tournaments.json')) {
+    $tempTournaments = json_decode(file_get_contents('tournaments.json'), true);
+    foreach ($tempTournaments as $tt) {
+        if (($tt['status'] ?? 'Pending') === 'Pending')
+            $tournamentsPending++;
+    }
+}
+
+// Check users.json for usersCount if DB count is 0
 if ($usersCount == 0 && file_exists('users.json')) {
     $tempUsers = json_decode(file_get_contents('users.json'), true);
     $usersCount = is_array($tempUsers) ? count($tempUsers) : 0;
 }
 
+$blockedUsers = [];
+if (file_exists('users.json')) {
+    $tempUsers = json_decode(file_get_contents('users.json'), true);
+    foreach ($tempUsers as $bu) {
+        if (isset($bu['is_blocked']) && $bu['is_blocked'])
+            $blockedUsers[] = $bu;
+    }
+}
+$settings['blacklist_count'] = count($blockedUsers);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -350,6 +419,47 @@ if ($usersCount == 0 && file_exists('users.json')) {
             margin-bottom: 3rem;
         }
 
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+            transition: 0.5s;
+        }
+
+        .stat-card:hover::before {
+            left: 100%;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+
+        @keyframes sweep {
+            0% {
+                transform: translateX(-100%);
+            }
+
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        @keyframes pulse {
+            from {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            to {
+                transform: scale(1.1);
+                opacity: 1;
+            }
+        }
+
         .stat-card {
             background: var(--bg-card);
             border: 1px solid var(--glass-border);
@@ -360,25 +470,33 @@ if ($usersCount == 0 && file_exists('users.json')) {
             gap: 10px;
             position: relative;
             overflow: hidden;
-            transition: 0.3s;
+            transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
         .stat-card:hover {
             border-color: var(--primary-green);
-            transform: translateY(-5px);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 10px 30px rgba(57, 255, 20, 0.1);
         }
 
-        .stat-card::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -20%;
-            width: 150px;
-            height: 150px;
-            background: var(--primary-green-glow);
-            filter: blur(60px);
-            z-index: 0;
-            opacity: 0.1;
+        .mgmt-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 1.8rem;
+            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mgmt-card:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: var(--primary-green);
+            transform: scale(1.01);
+        }
+
+        .ad-banner-img:hover {
+            transform: scale(1.1);
         }
 
         .stat-label {
@@ -554,19 +672,6 @@ if ($usersCount == 0 && file_exists('users.json')) {
             gap: 1.5rem;
         }
 
-        .mgmt-card {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--glass-border);
-            border-radius: 16px;
-            padding: 1.5rem;
-            transition: 0.3s;
-        }
-
-        .mgmt-card:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: var(--primary-green);
-        }
-
         /* Responsive */
         @media (max-width: 1024px) {
             .sidebar {
@@ -607,10 +712,6 @@ if ($usersCount == 0 && file_exists('users.json')) {
             background: #333;
             border-radius: 10px;
         }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #444;
-        }
     </style>
 </head>
 
@@ -647,7 +748,7 @@ if ($usersCount == 0 && file_exists('users.json')) {
             <div class="nav-item">
                 <a href="#" class="nav-link" onclick="showSection('approvals', event)">
                     <i class="fa-solid fa-circle-check"></i>
-                    <span class="nav-text">Venue Approvals</span>
+                    <span class="nav-text">Tournament Approvals</span>
                 </a>
             </div>
             <div class="nav-item">
@@ -710,6 +811,30 @@ if ($usersCount == 0 && file_exists('users.json')) {
             </div>
         </header>
 
+        <?php if ($settings['lockdown_mode']): ?>
+            <div
+                style="background: rgba(255, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); padding: 1rem; border-radius: 12px; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; overflow: hidden; position: relative;">
+                <div style="display: flex; align-items: center; gap: 10px; z-index: 1;">
+                    <i class="fa-solid fa-triangle-exclamation"
+                        style="font-size: 1.5rem; animation: pulse 1s infinite alternate;"></i>
+                    <div>
+                        <strong style="text-transform: uppercase;">System Lockdown Active</strong>
+                        <p style="font-size: 0.85rem; opacity: 0.8;">User access is restricted and new bookings are paused.
+                        </p>
+                    </div>
+                </div>
+                <form method="POST" style="margin: 0; z-index: 1;">
+                    <input type="hidden" name="action" value="toggle_lockdown">
+                    <button type="submit"
+                        style="background: var(--danger); color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: 600; cursor: pointer;">Disable
+                        Lockdown</button>
+                </form>
+                <div
+                    style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,68,68,0.05) 50%, transparent 100%); animation: sweep 3s infinite linear;">
+                </div>
+            </div>
+        <?php endif; ?>
+
         <?php if (isset($successMessage)): ?>
             <div
                 style="background: rgba(57, 255, 20, 0.1); border: 1px solid var(--primary-green); color: var(--primary-green); padding: 1rem; border-radius: 12px; margin-bottom: 2rem; display: flex; align-items: center; gap: 10px; animation: fadeIn 0.5s ease-out;">
@@ -728,43 +853,73 @@ if ($usersCount == 0 && file_exists('users.json')) {
                 <span class="stat-trend trend-up"><i class="fa-solid fa-arrow-trend-up"></i> +12% this month</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Pending Approvals</span>
+                <span class="stat-label">Pending Tournament Approvals</span>
                 <span class="stat-value">
-                    <?php echo $venuesPending; ?>
+                    <?php echo $tournamentsPending; ?>
                 </span>
                 <span class="stat-trend" style="color: var(--warning);"><i class="fa-solid fa-clock"></i> 4 new
                     today</span>
             </div>
             <div class="stat-card">
                 <span class="stat-label">Active Bookings</span>
-                <span class="stat-value">1,284</span>
+                <span class="stat-value">142</span>
                 <span class="stat-trend trend-up"><i class="fa-solid fa-arrow-trend-up"></i> +5.4%</span>
             </div>
             <div class="stat-card">
                 <span class="stat-label">Monthly Revenue</span>
-                <span class="stat-value">$14,250</span>
+                <span class="stat-value">₹14,250</span>
                 <span class="stat-trend trend-up"><i class="fa-solid fa-arrow-trend-up"></i> +21%</span>
             </div>
         </div>
 
         <!-- SECTION: OVERVIEW -->
         <div id="overview" class="dashboard-section">
-            <div class="card">
+            <div class="card" style="position: relative; overflow: hidden; border-color: rgba(57, 255, 20, 0.2);">
+                <div
+                    style="position: absolute; top: -100px; right: -100px; width: 200px; height: 200px; background: var(--primary-green); filter: blur(100px); opacity: 0.1;">
+                </div>
                 <div class="section-header">
-                    <h2 class="section-title">Platform Pulse</h2>
-                    <select
-                        style="background: var(--bg-dark); color: white; border: 1px solid var(--glass-border); padding: 5px 10px; border-radius: 8px;">
-                        <option>Last 7 Days</option>
-                        <option>Last 30 Days</option>
-                        <option>Current Year</option>
-                    </select>
+                    <h2 class="section-title"><i class="fa-solid fa-wave-square"
+                            style="color: var(--primary-green); margin-right: 10px;"></i> Platform Pulse</h2>
+                    <span class="badge badge-approved" style="animation: pulse 2s infinite;">System Stable</span>
                 </div>
                 <div
-                    style="height: 300px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.01); border: 1px dashed var(--glass-border); border-radius: 12px; color: var(--text-gray);">
-                    <div style="text-align: center;">
-                        <i class="fa-solid fa-chart-line"
-                            style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
-                        <p>Analytics Graph Placeholder</p>
+                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; margin-top: 1rem;">
+                    <div
+                        style="background: rgba(255,255,255,0.02); padding: 1.5rem; border-radius: 15px; border: 1px solid var(--glass-border);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="font-size: 0.8rem; color: var(--text-gray);">CPU Load</span>
+                            <span style="font-size: 0.8rem; color: var(--primary-green);">24%</span>
+                        </div>
+                        <div style="height: 6px; background: #222; border-radius: 10px; overflow: hidden;">
+                            <div
+                                style="width: 24%; height: 100%; background: var(--primary-green); box-shadow: 0 0 10px var(--primary-green);">
+                            </div>
+                        </div>
+                    </div>
+                    <div
+                        style="background: rgba(255,255,255,0.02); padding: 1.5rem; border-radius: 15px; border: 1px solid var(--glass-border);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="font-size: 0.8rem; color: var(--text-gray);">DB Health</span>
+                            <span style="font-size: 0.8rem; color: var(--primary-green);">Optimal</span>
+                        </div>
+                        <div style="height: 6px; background: #222; border-radius: 10px; overflow: hidden;">
+                            <div
+                                style="width: 98%; height: 100%; background: var(--primary-green); box-shadow: 0 0 10px var(--primary-green);">
+                            </div>
+                        </div>
+                    </div>
+                    <div
+                        style="background: rgba(255,255,255,0.02); padding: 1.5rem; border-radius: 15px; border: 1px solid var(--glass-border);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="font-size: 0.8rem; color: var(--text-gray);">Server Uptime</span>
+                            <span style="font-size: 0.8rem; color: var(--primary-green);">14 Days</span>
+                        </div>
+                        <div style="height: 6px; background: #222; border-radius: 10px; overflow: hidden;">
+                            <div
+                                style="width: 100%; height: 100%; background: var(--primary-green); box-shadow: 0 0 10px var(--primary-green);">
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -974,32 +1129,86 @@ if ($usersCount == 0 && file_exists('users.json')) {
         <div id="approvals" class="dashboard-section">
             <div class="card">
                 <div class="section-header">
-                    <h2 class="section-title">Venue & Event Approvals</h2>
+                    <h2 class="section-title">Tournament & Event Approvals</h2>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
-                    <div>
-                        <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--text-gray);">Pending Venues</h3>
-                        <div class="mgmt-card" style="border-left: 4px solid var(--warning);">
-                            <div
-                                style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                                <div>
-                                    <h4 style="font-size: 1.1rem;">Golden Strike Turf</h4>
-                                    <p style="font-size: 0.85rem; color: var(--text-gray);"><i
-                                            class="fa-solid fa-location-dot"></i> Bangalore, Indiranagar</p>
-                                </div>
-                                <span class="badge badge-pending">Waiting</span>
-                            </div>
-                            <div style="display: flex; gap: 10px; margin-top: 1rem;">
-                                <button class="btn-primary"
-                                    style="padding: 0.5rem 1rem; font-size: 0.85rem; flex: 1;">Approve</button>
-                                <button class="action-btn delete"
-                                    style="padding: 0.5rem 1rem; border-color: var(--danger); color: var(--danger); flex: 1;">Reject</button>
-                            </div>
+                <div class="mgmt-grid">
+                    <?php
+                    $allTournaments = [];
+                    if ($pdo) {
+                        try {
+                            $stmt = $pdo->query("SELECT t.*, v.venue_name FROM TOURNAMENTS t LEFT JOIN VENUES v ON t.venue_id = v.venue_id WHERE t.admin_approval = 'Pending'");
+                            $allTournaments = $stmt->fetchAll();
+                        } catch (Exception $e) {
+                        }
+                    }
+
+                    if (empty($allTournaments) && file_exists('tournaments.json')) {
+                        $jsonTournaments = json_decode(file_get_contents('tournaments.json'), true);
+                        foreach ($jsonTournaments as $jt) {
+                            if (($jt['status'] ?? 'Pending') === 'Pending')
+                                $allTournaments[] = $jt;
+                        }
+                    }
+
+                    if (empty($allTournaments)): ?>
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: var(--text-gray);">
+                            <i class="fa-solid fa-calendar-check"
+                                style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.2;"></i>
+                            <p>No pending tournament or event requests.</p>
                         </div>
-                    </div>
+                    <?php else:
+                        foreach ($allTournaments as $t):
+                            $tId = $t['tournament_id'] ?? $t['id'];
+                            $tName = $t['tournament_name'] ?? $t['name'];
+                            $tVenue = $t['venue_name'] ?? $t['venue'] ?? 'Unknown Venue';
+                            $tDate = $t['start_date'] ?? $t['date'] ?? 'N/A';
+                            $tType = $t['type'] ?? 'Tournament';
+                            $tOrganizer = $t['organizer'] ?? 'Official';
+                            ?>
+                            <div class="mgmt-card" style="border-left: 4px solid var(--warning);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                                    <div>
+                                        <span class="badge badge-pending"
+                                            style="margin-bottom: 8px; display: inline-block;"><?php echo $tType; ?></span>
+                                        <h4 style="font-size: 1.1rem;"><?php echo $tName; ?></h4>
+                                        <p style="font-size: 0.85rem; color: var(--text-gray); margin-top: 5px;">
+                                            <i class="fa-solid fa-location-dot"></i> <?php echo $tVenue; ?>
+                                        </p>
+                                        <p style="font-size: 0.85rem; color: var(--text-gray);">
+                                            <i class="fa-solid fa-user-tie"></i> Organizer: <?php echo $tOrganizer; ?>
+                                        </p>
+                                        <p style="font-size: 0.85rem; color: var(--text-gray);">
+                                            <i class="fa-solid fa-calendar-day"></i> Date: <?php echo $tDate; ?>
+                                        </p>
+                                        <?php if (isset($t['description'])): ?>
+                                            <p
+                                                style="font-size: 0.8rem; color: var(--text-gray); margin-top: 10px; font-style: italic; line-height: 1.4;">
+                                                "<?php echo $t['description']; ?>"
+                                            </p>
+                                        <?php endif; ?>
+                                    </div>
+                                    <span class="badge badge-pending">WAITING</span>
+                                </div>
+                                <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
+                                    <button class="action-btn"
+                                        style="flex: 1; background: var(--primary-green); color: var(--bg-dark); border: none; font-weight: 700;"
+                                        onclick="manageTournament('approve_tournament', '<?php echo $tId; ?>')">Approve</button>
+                                    <button class="action-btn delete"
+                                        style="flex: 1; border-color: var(--danger); color: var(--danger);"
+                                        onclick="manageTournament('reject_tournament', '<?php echo $tId; ?>')">Reject</button>
+                                </div>
+                            </div>
+                        <?php endforeach; endif; ?>
                 </div>
             </div>
         </div>
+
+        <!-- Hidden Tournament Action Form -->
+        <form id="tournamentActionForm" method="POST" style="display:none;">
+            <input type="hidden" name="action" id="t_action">
+            <input type="hidden" name="tournament_id" id="t_id">
+        </form>
 
         <!-- SECTION: SUBSCRIPTIONS -->
         <div id="subscriptions" class="dashboard-section">
@@ -1022,7 +1231,7 @@ if ($usersCount == 0 && file_exists('users.json')) {
                                     style="font-weight: 800; color: <?php echo ($plan['id'] === 'Gold') ? 'var(--primary-green)' : 'var(--text-gray)'; ?>;"><?php echo explode(' ', $plan['name'])[0]; ?></span>
                             </div>
                             <div style="font-size: 1.5rem; font-weight: 800; margin-bottom: 1rem;">
-                                $<?php echo $plan['price']; ?><span
+                                ₹<?php echo $plan['price']; ?><span
                                     style="font-size: 0.8rem; color: var(--text-gray);">/mo</span></div>
                             <ul
                                 style="list-style: none; font-size: 0.85rem; color: var(--text-gray); margin-bottom: 1.5rem; height: 100px; overflow-y: auto;">
@@ -1065,7 +1274,7 @@ if ($usersCount == 0 && file_exists('users.json')) {
                         <div>
                             <label
                                 style="display: block; color: var(--text-gray); font-size: 0.85rem; margin-bottom: 5px;">Price
-                                ($)</label>
+                                (₹)</label>
                             <input type="text" name="plan_price" id="edit_plan_price"
                                 style="width: 100%; background: var(--bg-dark); border: 1px solid var(--glass-border); color: white; padding: 10px; border-radius: 8px;">
                         </div>
@@ -1152,23 +1361,122 @@ if ($usersCount == 0 && file_exists('users.json')) {
     </div>
 
     <div id="security" class="dashboard-section">
-        <div class="card">
+        <div class="card" style="position: relative; overflow: hidden;">
+            <div
+                style="position: absolute; top: 0; right: 0; width: 300px; height: 300px; background: var(--primary-green-glow); filter: blur(100px); opacity: 0.05; pointer-events: none;">
+            </div>
             <h2 class="section-title">Platform Security & Controls</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem;">
-                <div class="mgmt-card">
-                    <h3>Blocked IPs / Users</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-gray); margin-bottom: 1rem;">5 currently
-                        blacklisted entities.</p>
-                    <button class="action-btn" style="border-color: var(--danger); color: var(--danger);">View
-                        Blacklist</button>
+            <div
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 2rem;">
+                <div class="mgmt-card" style="background: rgba(255,68,68,0.02); border-color: rgba(255,68,68,0.1);">
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1.5rem;">
+                        <div
+                            style="width: 50px; height: 50px; background: rgba(255,68,68,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--danger); font-size: 1.5rem;">
+                            <i class="fa-solid fa-user-shield"></i>
+                        </div>
+                        <div>
+                            <h3 style="font-size: 1.2rem;">Blacklisted Entities</h3>
+                            <p style="font-size: 0.85rem; color: var(--text-gray);">
+                                <?php echo $settings['blacklist_count']; ?> currently restricted access.
+                            </p>
+                        </div>
+                    </div>
+                    <button class="action-btn"
+                        style="width: 100%; border-color: var(--danger); color: var(--danger); background: rgba(255,68,68,0.05);"
+                        onclick="openBlacklistModal()">
+                        <i class="fa-solid fa-list-ul" style="margin-right: 8px;"></i> View Blacklist
+                    </button>
                 </div>
-                <div class="mgmt-card">
-                    <h3>System Lockdown</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-gray); margin-bottom: 1rem;">Emergency
-                        maintenance mode.</p>
-                    <button class="action-btn" style="border-color: var(--warning); color: var(--warning);">Enable
-                        Lockdown</button>
+
+                <div class="mgmt-card"
+                    style="<?php echo $settings['lockdown_mode'] ? 'border-color: var(--warning); background: rgba(255,170,0,0.02);' : 'border-color: rgba(255,255,255,0.05);'; ?>">
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1.5rem;">
+                        <div
+                            style="width: 50px; height: 50px; background: <?php echo $settings['lockdown_mode'] ? 'rgba(255,170,0,0.1)' : 'rgba(255,255,255,0.05)'; ?>; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: <?php echo $settings['lockdown_mode'] ? 'var(--warning)' : 'white'; ?>; font-size: 1.5rem;">
+                            <i
+                                class="fa-solid <?php echo $settings['lockdown_mode'] ? 'fa-lock' : 'fa-lock-open'; ?>"></i>
+                        </div>
+                        <div>
+                            <h3 style="font-size: 1.2rem;">Emergency Lockdown</h3>
+                            <p style="font-size: 0.85rem; color: var(--text-gray);">Restrict all front-end access
+                                instantly.</p>
+                        </div>
+                    </div>
+                    <form method="POST" style="margin: 0;">
+                        <input type="hidden" name="action" value="toggle_lockdown">
+                        <button type="submit" class="action-btn"
+                            style="width: 100%; border-color: var(--warning); color: var(--warning); background: rgba(255,170,0,0.05);">
+                            <i class="fa-solid <?php echo $settings['lockdown_mode'] ? 'fa-power-off' : 'fa-hand'; ?>"
+                                style="margin-right: 8px;"></i>
+                            <?php echo $settings['lockdown_mode'] ? 'Disable Lockdown' : 'Enable Lockdown'; ?>
+                        </button>
+                    </form>
                 </div>
+
+                <div class="mgmt-card">
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1.5rem;">
+                        <div
+                            style="width: 50px; height: 50px; background: rgba(0,170,255,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--info); font-size: 1.5rem;">
+                            <i class="fa-solid fa-file-shield"></i>
+                        </div>
+                        <div>
+                            <h3 style="font-size: 1.2rem;">Audit Logs</h3>
+                            <p style="font-size: 0.85rem; color: var(--text-gray);">System-wide admin action history.
+                            </p>
+                        </div>
+                    </div>
+                    <button class="action-btn"
+                        style="width: 100%; border-color: var(--info); color: var(--info); background: rgba(0,170,255,0.05);">
+                        <i class="fa-solid fa-magnifying-glass-chart" style="margin-right: 8px;"></i> Inspect Logs
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Blacklist Modal -->
+    <div id="blacklistModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(15px);">
+        <div class="card"
+            style="width: 100%; max-width: 600px; max-height: 80vh; overflow-y: auto; border-color: var(--danger);">
+            <div class="section-header">
+                <h2 class="section-title"><i class="fa-solid fa-ban"
+                        style="color: var(--danger); margin-right: 10px;"></i> Restricted Entities</h2>
+                <button onclick="closeBlacklistModal()"
+                    style="background: none; border: none; color: var(--text-gray); cursor: pointer; font-size: 1.5rem;"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="table-container" style="margin-top: 1rem;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($blockedUsers)): ?>
+                            <tr>
+                                <td colspan="3" style="text-align: center; color: var(--text-gray); padding: 2rem;">No users
+                                    currently blacklisted.</td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($blockedUsers as $bu): ?>
+                                <tr>
+                                    <td><?php echo $bu['name']; ?></td>
+                                    <td><?php echo $bu['email']; ?></td>
+                                    <td>
+                                        <button class="action-btn"
+                                            style="color: var(--primary-green); border-color: var(--primary-green);"
+                                            onclick="manageUser('toggle_block', '<?php echo $bu['email']; ?>', '<?php echo $bu['role']; ?>')">Restore
+                                            Access</button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -1230,81 +1538,146 @@ if ($usersCount == 0 && file_exists('users.json')) {
     </form>
 
     <div id="ads" class="dashboard-section">
-        <div class="card">
-            <div class="section-header">
-                <h2 class="section-title">Promotions & Announcements</h2>
-                <button class="btn-primary" style="padding: 8px 20px; font-size: 0.9rem; width: auto; margin: 0;"
-                    onclick="openAdModal()"><i class="fa-solid fa-plus"></i> Add Promotion</button>
+        <div class="card" style="position: relative; overflow: hidden;">
+            <div
+                style="position: absolute; top: 0; left: 0; width: 300px; height: 300px; background: rgba(57, 255, 20, 0.05); filter: blur(100px); pointer-events: none;">
             </div>
-            <div class="mgmt-grid">
+            <div class="section-header">
+                <h2 class="section-title"><i class="fa-solid fa-bullhorn"
+                        style="color: var(--primary-green); margin-right: 12px;"></i> Promotions & Announcements</h2>
+                <button class="btn-primary"
+                    style="padding: 10px 24px; font-size: 0.9rem; width: auto; margin: 0; box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);"
+                    onclick="openAdModal()"><i class="fa-solid fa-plus-circle" style="margin-right: 8px;"></i> Create
+                    Promotion</button>
+            </div>
+
+            <div class="mgmt-grid" style="margin-top: 2rem;">
                 <?php
                 $adsList = file_exists('ads.json') ? json_decode(file_get_contents('ads.json'), true) : [];
-                foreach ($adsList as $ad):
-                    ?>
-                    <div class="mgmt-card">
-                        <div
-                            style="height: 120px; background: #1a1a1a; margin-bottom: 1rem; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                            <?php if (!empty($ad['banner'])): ?>
-                                <img src="<?php echo $ad['banner']; ?>" style="width: 100%; height: 100%; object-fit: cover;">
-                            <?php else: ?>
-                                <span style="color: var(--text-gray); font-size: 0.8rem;">Banner Preview</span>
-                            <?php endif; ?>
-                        </div>
-                        <h3><?php echo $ad['title']; ?></h3>
-                        <p style="font-size: 0.85rem; color: var(--text-gray); margin-bottom: 1rem;">Status: <span
-                                style="color: <?php echo $ad['status'] === 'Active' ? 'var(--primary-green)' : 'var(--danger)'; ?>;"><?php echo $ad['status']; ?></span>
-                        </p>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="action-btn" style="flex: 1;"
-                                onclick='openAdModal(<?php echo json_encode($ad); ?>)'>Edit</button>
-                            <button class="action-btn delete" style="flex: 1;"
-                                onclick='deleteAd("<?php echo $ad['id']; ?>")'>Delete</button>
-                        </div>
+                if (empty($adsList)): ?>
+                    <div
+                        style="grid-column: 1 / -1; text-align: center; padding: 5rem 2rem; color: var(--text-gray); background: rgba(255,255,255,0.01); border-radius: 20px; border: 1px dashed var(--glass-border);">
+                        <i class="fa-solid fa-clapperboard"
+                            style="font-size: 4rem; margin-bottom: 1.5rem; opacity: 0.1;"></i>
+                        <p style="font-size: 1.1rem;">No promotions active at the moment.</p>
+                        <p style="font-size: 0.85rem; opacity: 0.6; margin-top: 8px;">Create an announcement to reach your
+                            players.</p>
                     </div>
-                <?php endforeach; ?>
+                <?php else:
+                    foreach ($adsList as $ad):
+                        $isActive = ($ad['status'] === 'Active');
+                        ?>
+                        <div class="mgmt-card"
+                            style="border-radius: 24px; transition: 0.4s; <?php echo $isActive ? 'border-color: rgba(57, 255, 20, 0.2);' : ''; ?>">
+                            <div
+                                style="position: relative; height: 160px; background: #0a0a0a; margin-bottom: 1.5rem; border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-border);">
+                                <?php if (!empty($ad['banner'])): ?>
+                                    <img src="<?php echo $ad['banner']; ?>"
+                                        style="width: 100%; height: 100%; object-fit: cover; transition: 0.6s;"
+                                        class="ad-banner-img">
+                                <?php else: ?>
+                                    <div
+                                        style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(135deg, #111 0%, #222 100%);">
+                                        <i class="fa-solid fa-megaphone"
+                                            style="font-size: 2.5rem; color: #333; margin-bottom: 10px;"></i>
+                                        <span
+                                            style="color: var(--text-gray); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2px;">No
+                                            Asset Provided</span>
+                                    </div>
+                                <?php endif; ?>
+                                <div style="position: absolute; top: 12px; right: 12px;">
+                                    <span class="badge"
+                                        style="background: <?php echo $isActive ? 'rgba(57, 255, 20, 0.9)' : 'rgba(255, 68, 68, 0.9)'; ?>; color: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: none;">
+                                        <?php echo $ad['status']; ?>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem; font-weight: 700;"><?php echo $ad['title']; ?>
+                            </h3>
+                            <p
+                                style="font-size: 0.85rem; color: var(--text-gray); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;">
+                                <span
+                                    style="width: 8px; height: 8px; border-radius: 50%; background: <?php echo $isActive ? 'var(--primary-green)' : 'var(--danger)'; ?>; display: inline-block; <?php echo $isActive ? 'animation: pulse 2s infinite;' : ''; ?>"></span>
+                                Live Campaign: <?php echo $isActive ? 'Broadcasting' : 'Paused'; ?>
+                            </p>
+
+                            <div style="display: flex; gap: 12px;">
+                                <button class="action-btn"
+                                    style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-weight: 600;"
+                                    onclick='openAdModal(<?php echo json_encode($ad); ?>)'>
+                                    <i class="fa-solid fa-pen-to-square"></i> Edit
+                                </button>
+                                <button class="action-btn delete"
+                                    style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-weight: 600;"
+                                    onclick='deleteAd("<?php echo $ad['id']; ?>")'>
+                                    <i class="fa-solid fa-trash-can"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                    <?php endforeach; endif; ?>
             </div>
         </div>
     </div>
 
     <!-- Ad Editor Modal -->
     <div id="adModal"
-        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(20px);">
         <div class="card"
-            style="width: 100%; max-width: 450px; position: relative; animation: slideUp 0.4s ease-out forwards;">
+            style="width: 100%; max-width: 500px; position: relative; animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; border-color: var(--primary-green);">
             <button onclick="closeAdModal()"
-                style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;"><i
-                    class="fa-solid fa-times"></i></button>
-            <h2 class="section-title" id="adModalTitle">Create Promotion</h2>
-            <form method="POST" style="margin-top: 1.5rem;">
+                style="position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.05); border: none; color: white; width: 35px; height: 35px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s;">
+                <i class="fa-solid fa-times"></i>
+            </button>
+            <h2 class="section-title" id="adModalTitle" style="display: flex; align-items: center; gap: 12px;">
+                <i class="fa-solid fa-bullhorn" style="color: var(--primary-green);"></i> Create Promotion
+            </h2>
+            <p style="color: var(--text-gray); font-size: 0.85rem; margin-top: 5px;">Configure the announcement details
+                for the platform.</p>
+
+            <form method="POST" style="margin-top: 2rem;">
                 <input type="hidden" name="action" id="ad_action" value="add_ad">
                 <input type="hidden" name="ad_id" id="ad_id_input">
 
-                <div style="margin-bottom: 1rem;">
+                <div style="margin-bottom: 1.2rem;">
                     <label
-                        style="display: block; color: var(--text-gray); font-size: 0.85rem; margin-bottom: 5px;">Title</label>
-                    <input type="text" name="title" id="ad_title" required
-                        style="width: 100%; background: var(--bg-dark); border: 1px solid var(--glass-border); color: white; padding: 10px; border-radius: 8px;">
+                        style="display: block; color: var(--text-white); font-size: 0.9rem; margin-bottom: 8px; font-weight: 500;">Campaign
+                        Title</label>
+                    <input type="text" name="title" id="ad_title" required placeholder="e.g. New Year Special 20% Off"
+                        style="width: 100%; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; padding: 12px 15px; border-radius: 12px; focus: border-color: var(--primary-green);">
                 </div>
 
-                <div style="margin-bottom: 1rem;">
+                <div style="margin-bottom: 1.2rem;">
                     <label
-                        style="display: block; color: var(--text-gray); font-size: 0.85rem; margin-bottom: 5px;">Banner
-                        Image URL</label>
-                    <input type="url" name="banner" id="ad_banner" placeholder="https://example.com/banner.jpg"
-                        style="width: 100%; background: var(--bg-dark); border: 1px solid var(--glass-border); color: white; padding: 10px; border-radius: 8px;">
+                        style="display: block; color: var(--text-white); font-size: 0.9rem; margin-bottom: 8px; font-weight: 500;">Asset
+                        URL (Banner)</label>
+                    <input type="url" name="banner" id="ad_banner"
+                        placeholder="https://source.unsplash.com/random/1200x600?sports"
+                        style="width: 100%; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; padding: 12px 15px; border-radius: 12px;">
+                    <p style="font-size: 0.75rem; color: var(--text-gray); margin-top: 6px;">Recommended Aspect Ratio:
+                        2:1</p>
                 </div>
 
-                <div style="margin-bottom: 1.5rem;">
+                <div style="margin-bottom: 2rem;">
                     <label
-                        style="display: block; color: var(--text-gray); font-size: 0.85rem; margin-bottom: 5px;">Status</label>
+                        style="display: block; color: var(--text-white); font-size: 0.9rem; margin-bottom: 8px; font-weight: 500;">Campaign
+                        Status</label>
                     <select name="status" id="ad_status"
-                        style="width: 100%; background: var(--bg-dark); border: 1px solid var(--glass-border); color: white; padding: 10px; border-radius: 8px;">
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
+                        style="width: 100%; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; padding: 12px 15px; border-radius: 12px; cursor: pointer;">
+                        <option value="Active">Active (Broadcasting Now)</option>
+                        <option value="Inactive">Inactive (Draft/Paused)</option>
                     </select>
                 </div>
 
-                <button type="submit" class="btn-primary" style="margin: 0;">Publish Promotion</button>
+                <div style="display: flex; gap: 15px;">
+                    <button type="button" class="action-btn"
+                        style="flex: 1; padding: 14px; margin: 0; border: 1px solid var(--glass-border);"
+                        onclick="closeAdModal()">Cancel</button>
+                    <button type="submit" class="btn-primary"
+                        style="flex: 1; margin: 0; padding: 14px; background: var(--primary-green); color: black;">
+                        <i class="fa-solid fa-paper-plane" style="margin-right: 8px;"></i> Save & Publish
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -1421,6 +1794,23 @@ if ($usersCount == 0 && file_exists('users.json')) {
                 document.getElementById('resolve_dispute_id').value = id;
                 document.getElementById('disputeForm').submit();
             }
+        }
+
+        function manageTournament(action, id) {
+            let confirmMsg = (action === 'approve_tournament') ? "Approve this tournament/event?" : "Reject this tournament/event?";
+            if (confirm(confirmMsg)) {
+                document.getElementById('t_action').value = action;
+                document.getElementById('t_id').value = id;
+                document.getElementById('tournamentActionForm').submit();
+            }
+        }
+
+        function openBlacklistModal() {
+            document.getElementById('blacklistModal').style.display = 'flex';
+        }
+
+        function closeBlacklistModal() {
+            document.getElementById('blacklistModal').style.display = 'none';
         }
 
         // Initial call to show overview or the relevant section

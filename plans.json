@@ -2,7 +2,7 @@
     {
         "id": "Free",
         "name": "FREE PLAN",
-        "badge": "🟢",
+        "badge": "\ud83d\udfe2",
         "price": "0.00",
         "features": [
             "View sports venues",
@@ -14,8 +14,8 @@
     {
         "id": "Silver",
         "name": "SILVER PLAN",
-        "badge": "🥈",
-        "price": "9.99",
+        "badge": "\ud83e\udd48",
+        "price": "1000",
         "features": [
             "Priority booking",
             "Discounted activity fees",
@@ -25,7 +25,7 @@
     {
         "id": "Gold",
         "name": "GOLD PLAN",
-        "badge": "🥇",
+        "badge": "\ud83e\udd47",
         "price": "24.99",
         "features": [
             "All Silver benefits",
@@ -36,7 +36,7 @@
     {
         "id": "Platinum",
         "name": "PLATINUM PLAN",
-        "badge": "💎",
+        "badge": "\ud83d\udc8e",
         "price": "49.99",
         "features": [
             "All Gold benefits",

@@ -100,7 +100,9 @@ CREATE TABLE TOURNAMENTS (
     start_date DATE,
     end_date DATE,
     max_participants INT,
-    status ENUM('Upcoming','Ongoing','Completed'),
+    status ENUM('Upcoming','Ongoing','Completed') DEFAULT 'Upcoming',
+    admin_approval ENUM('Pending','Approved','Rejected') DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (venue_id) REFERENCES VENUES(venue_id)
 );
 
