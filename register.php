@@ -7,6 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'];
     $confirm = $_POST['confirm_password'];
     $plan = $_POST['plan'] ?? 'Free';
+    $duration = $_POST['duration'] ?? 1;
     $name = explode('@', $email)[0];
 
     if ($password !== $confirm) {
@@ -49,10 +50,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $otp = rand(100000, 999999);
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
+            // Determine verification status: Verified by email OTP OR by successful Payment
+            $is_email_verified = (isset($_POST['is_verified']) && $_POST['is_verified'] == '1');
+            $is_payment_verified = !empty($_POST['razorpay_payment_id']);
+            $is_verified = ($is_email_verified || $is_payment_verified);
+            $is_verified_int = $is_verified ? 1 : 0;
+
             // 1. Save to Database
             if ($pdo) {
-                $stmt = $pdo->prepare("INSERT INTO USERS (full_name, email, password_hash, otp, plan) VALUES (?, ?, ?, ?, ?)");
-                $stmt->execute([$name, $email, $hashed_password, $otp, $plan]);
+                // Determine expiration date if needed, or just save duration if column exists (omitted for safety)
+                $stmt = $pdo->prepare("INSERT INTO USERS (full_name, email, password_hash, otp, plan, is_verified) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$name, $email, $hashed_password, $otp, $plan, $is_verified_int]);
             }
 
             // 2. Save to JSON
@@ -60,13 +68,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'email' => $email,
                 'password' => $hashed_password,
                 'name' => $name,
-                'is_verified' => false,
+                'is_verified' => $is_verified,
                 'otp' => $otp,
-                'plan' => $plan
+                'plan' => $plan,
+                'duration' => $duration,
+                'payment_id' => $_POST['razorpay_payment_id'] ?? null
             ];
             file_put_contents($file, json_encode($users));
 
-            // Send Verification Email
+            // Logic to skip email if already verified or paid
+            if ($is_verified) {
+                $_SESSION['user'] = $email; // Log them in
+                header("Location: dashboard.php");
+                exit;
+            }
+
+            // Send Verification Email (Legacy/Fallback flow for unverified free users)
             require_once 'PHPMailer/Exception.php';
             require_once 'PHPMailer/PHPMailer.php';
             require_once 'PHPMailer/SMTP.php';
@@ -120,6 +137,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Razorpay SDK -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
     <style>
         :root {
@@ -485,6 +504,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .plan-card.selected .selected-icon {
             display: block;
         }
+
+        /* Duration Selection Styles */
+        .duration-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: 0.3s;
+            text-align: center;
+        }
+
+        .duration-card:hover {
+            border-color: var(--primary-green);
+            background: rgba(57, 255, 20, 0.05);
+        }
+
+        .duration-card.selected {
+            border-color: var(--primary-green);
+            background: rgba(57, 255, 20, 0.1);
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.2);
+        }
+
+        .duration-months {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-white);
+            margin-bottom: 5px;
+        }
+
+        .duration-save {
+            font-size: 0.8rem;
+            color: var(--primary-green);
+            font-weight: 500;
+        }
     </style>
     <!-- Google Identity Services Script -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -573,6 +627,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 selectedBtn.style.border = "none";
             }
             document.getElementById('selectedPlanInput').value = plan;
+
+            // Show/Hide Duration Selection
+            const durationSection = document.getElementById('duration-section');
+            if (plan === 'Free') {
+                durationSection.style.display = 'none';
+                document.getElementById('selectedDuration').value = '1';
+            } else {
+                durationSection.style.display = 'block';
+                // Reset duration selection visual if needed, or keep default
+            }
+        }
+
+        function selectDuration(months, element) {
+            document.querySelectorAll('.duration-card').forEach(c => c.classList.remove('selected'));
+            element.classList.add('selected');
+            document.getElementById('selectedDuration').value = months;
         }
 
         function prevStep() {
@@ -601,8 +671,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div id="step1">
                     <div class="form-group">
                         <label class="form-label">Email Address</label>
-                        <input type="email" name="email" id="reg-email" class="form-input"
-                            placeholder="Enter your email" required>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="email" name="email" id="reg-email" class="form-input"
+                                placeholder="Enter your email" required style="flex:1">
+                            <button type="button" id="btn-verify-email" class="btn-primary"
+                                style="width: auto; margin-top: 0; padding: 0 20px; font-size: 0.9rem;"
+                                onclick="sendVerificationCode()">Verify</button>
+                        </div>
+                        <div id="verified-badge"
+                            style="display:none; color: var(--primary-green); margin-top: 5px; font-size: 0.9rem;">
+                            <i class="fa-solid fa-circle-check"></i> Email Verified
+                        </div>
+                        <div id="otp-area" style="display:none; margin-top: 10px;">
+                            <div style="display: flex; gap: 10px;">
+                                <input type="text" id="email-otp-input" class="form-input" placeholder="Enter code"
+                                    maxlength="6" style="flex:1">
+                                <button type="button" class="btn-primary"
+                                    style="width: auto; margin-top: 0; padding: 0 20px; font-size: 0.9rem;"
+                                    onclick="verifyCode()">Submit</button>
+                            </div>
+                            <small style="color: var(--text-gray);">Check your inbox for the code.</small>
+                        </div>
+                        <input type="hidden" name="is_verified" id="is_verified" value="0">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Password</label>
@@ -658,13 +748,251 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?php endforeach; ?>
                     </div>
 
-                    <button type="submit" class="btn-primary">Confirm & Sign Up</button>
-                    <button type="button" class="btn-google" style="margin-top: 10px; border:none;"
-                        onclick="prevStep()">Back</button>
+                    <div id="duration-section"
+                        style="display: none; margin-top: 2rem; animation: slideUp 0.4s ease-out;">
+                        <h3 style="margin-bottom: 1rem; color: var(--text-white); font-size: 1.2rem;">Select Duration
+                        </h3>
+                        <input type="hidden" name="duration" id="selectedDuration" value="1">
+                        <div class="duration-grid"
+                            style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                            <div class="duration-card" onclick="selectDuration(3, this)">
+                                <div class="duration-months">3 Months</div>
+                                <div class="duration-save">Save 5%</div>
+                            </div>
+                            <div class="duration-card" onclick="selectDuration(6, this)">
+                                <div class="duration-months">6 Months</div>
+                                <div class="duration-save">Save 10%</div>
+                            </div>
+                            <div class="duration-card" onclick="selectDuration(12, this)">
+                                <div class="duration-months">12 Months</div>
+                                <div class="duration-save">Save 20%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2rem;">
+                        <!-- Changed type to button to trigger modal logic first -->
+                        <button type="button" class="btn-primary" onclick="showConfirmation()">Confirm & Sign
+                            Up</button>
+                        <button type="button" class="btn-google" style="margin-top: 10px; border:none;"
+                            onclick="prevStep()">Back</button>
+                    </div>
+                </div>
+
+                <!-- Confirmation Modal -->
+                <div id="confirmModal"
+                    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center;">
+                    <div
+                        style="background: var(--bg-card); padding: 2rem; border-radius: 16px; border: 1px solid var(--primary-green); max-width: 500px; width: 90%; position: relative; animation: slideUp 0.3s ease-out;">
+                        <h3 style="margin-bottom: 1.5rem; text-align: center; color: var(--primary-green);">Confirm
+                            Subscription</h3>
+
+                        <div
+                            style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="color: var(--text-gray);">Plan</span>
+                                <span id="confirmPlanName" style="font-weight: 700;">Gold Plan</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="color: var(--text-gray);">Duration</span>
+                                <span id="confirmDuration" style="font-weight: 700;">6 Months</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="color: var(--text-gray);">Monthly Price</span>
+                                <span id="confirmMonthlyPrice">₹1500</span>
+                            </div>
+                            <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0;"></div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span style="color: var(--text-gray);">Subtotal</span>
+                                <span id="confirmSubtotal">₹9000</span>
+                            </div>
+                            <div
+                                style="display: flex; justify-content: space-between; margin-bottom: 5px; color: var(--primary-green);">
+                                <span>Discount (<span id="confirmDiscountPercent">10%</span>)</span>
+                                <span id="confirmDiscountAmount">-₹900</span>
+                            </div>
+                            <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0;"></div>
+                            <div
+                                style="display: flex; justify-content: space-between; font-size: 1.2rem; font-weight: 800;">
+                                <span>Total</span>
+                                <span id="confirmTotal" style="color: var(--primary-green);">₹8100</span>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn-primary" onclick="startPayment()">Proceed to Pay & Sign
+                            Up</button>
+                        <button type="button" class="btn-google" style="margin-top: 10px; border:none;"
+                            onclick="closeConfirmation()">Cancel</button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
+
+    <script>
+        // Pass PHP plan data to JS
+        const plansData = <?php echo json_encode(json_decode(file_get_contents('plans.json'), true)); ?>;
+
+        function showConfirmation() {
+            const planId = document.getElementById('selectedPlanInput').value;
+            const duration = parseInt(document.getElementById('selectedDuration').value);
+
+            // Should submit directly if Free plan
+            if (planId === 'Free') {
+                document.getElementById('regForm').submit();
+                return;
+            }
+
+            const plan = plansData.find(p => p.id === planId);
+            if (!plan) return;
+
+            const monthlyPrice = parseInt(plan.price);
+            const subtotal = monthlyPrice * duration;
+
+            let discountPercent = 0;
+            if (duration === 3) discountPercent = 5;
+            else if (duration === 6) discountPercent = 10;
+            else if (duration === 12) discountPercent = 20;
+
+            const discountAmount = (subtotal * discountPercent) / 100;
+            const total = subtotal - discountAmount;
+
+            // Populate Modal
+            document.getElementById('confirmPlanName').textContent = plan.name;
+            document.getElementById('confirmDuration').textContent = duration + " Months";
+            document.getElementById('confirmMonthlyPrice').textContent = "₹" + monthlyPrice;
+            document.getElementById('confirmSubtotal').textContent = "₹" + subtotal;
+            document.getElementById('confirmDiscountPercent').textContent = discountPercent + "%";
+            document.getElementById('confirmDiscountAmount').textContent = "-₹" + discountAmount;
+            document.getElementById('confirmTotal').textContent = "₹" + total;
+
+            // Show Modal
+            const modal = document.getElementById('confirmModal');
+            modal.style.display = 'flex';
+        }
+
+        function closeConfirmation() {
+            document.getElementById('confirmModal').style.display = 'none';
+        }
+
+        function startPayment() {
+            const planId = document.getElementById('selectedPlanInput').value;
+            const duration = parseInt(document.getElementById('selectedDuration').value);
+            const plan = plansData.find(p => p.id === planId);
+
+            if (!plan) return;
+
+            const monthlyPrice = parseInt(plan.price);
+            const subtotal = monthlyPrice * duration;
+
+            let discountPercent = 0;
+            if (duration === 3) discountPercent = 5;
+            else if (duration === 6) discountPercent = 10;
+            else if (duration === 12) discountPercent = 20;
+
+            const discountAmount = (subtotal * discountPercent) / 100;
+            const total = subtotal - discountAmount;
+
+            // Amount in paise
+            const amountPaise = Math.round(total * 100);
+            const userEmail = document.getElementById('reg-email').value;
+
+            var options = {
+                "key": "rzp_test_S6NQuN1S6Lvj2T",
+                "amount": amountPaise,
+                "currency": "INR",
+                "name": "PlayMatrix",
+                "description": plan.name + " (" + duration + " Months)",
+                "image": "https://example.com/your_logo.png",
+                "handler": function (response) {
+                    // Payment successful
+                    // Create hidden input for payment ID
+                    const form = document.getElementById('regForm');
+                    const hiddenInput = document.createElement('input');
+                    hiddenInput.type = 'hidden';
+                    hiddenInput.name = 'razorpay_payment_id';
+                    hiddenInput.value = response.razorpay_payment_id;
+                    form.appendChild(hiddenInput);
+
+                    form.submit();
+                },
+                "prefill": {
+                    "email": userEmail
+                },
+                "theme": {
+                    "color": "#39ff14"
+                }
+            };
+            var rzp1 = new Razorpay(options);
+            rzp1.on('payment.failed', function (response) {
+                alert("Payment Failed: " + response.error.description);
+            });
+            rzp1.open();
+        }
+
+        function sendVerificationCode() {
+            const email = document.getElementById('reg-email').value;
+            const btn = document.getElementById('btn-verify-email');
+
+            if (!email || !email.includes('@')) {
+                alert("Please enter a valid email address.");
+                return;
+            }
+
+            btn.textContent = "Sending...";
+            btn.disabled = true;
+
+            fetch('send_otp.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('otp-area').style.display = 'block';
+                        btn.textContent = "Sent";
+                    } else {
+                        alert(data.message || "Failed to send OTP");
+                        btn.textContent = "Verify";
+                        btn.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Error sending OTP");
+                    btn.textContent = "Verify";
+                    btn.disabled = false;
+                });
+        }
+
+        function verifyCode() {
+            const email = document.getElementById('reg-email').value;
+            const otp = document.getElementById('email-otp-input').value;
+
+            fetch('verify_otp_ajax.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, otp: otp })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('otp-area').style.display = 'none';
+                        document.getElementById('verified-badge').style.display = 'block';
+                        document.getElementById('btn-verify-email').style.display = 'none';
+                        document.getElementById('reg-email').readOnly = true;
+                        document.getElementById('is_verified').value = '1';
+                    } else {
+                        alert(data.message || "Invalid OTP");
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Error verifying OTP");
+                });
+        }
+    </script>
 </body>
 
 </html>

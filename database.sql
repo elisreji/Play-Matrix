@@ -156,3 +156,14 @@ CREATE TABLE ADMIN_ACTION_LOGS (
     created_at DATETIME,
     FOREIGN KEY (admin_id) REFERENCES USERS(user_id)
 );
+
+CREATE TABLE TRAINER_APPLICATIONS (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_email VARCHAR(100) NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    specialization VARCHAR(100) NOT NULL,
+    experience INT NOT NULL,
+    certificate_file VARCHAR(255) NOT NULL,
+    status ENUM('Pending', 'Approved', 'Rejected') DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

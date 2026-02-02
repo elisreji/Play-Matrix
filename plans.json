@@ -5,31 +5,35 @@
         "badge": "\ud83d\udfe2",
         "price": "0.00",
         "features": [
-            "View sports venues",
+            "View and book sports venues",
             "Join open plays",
-            "View tournaments and events",
-            "Book standard activities"
+            "View and book tournaments and events",
+            "Book standard activities",
+            "View trainers"
         ]
     },
     {
         "id": "Silver",
         "name": "SILVER PLAN",
         "badge": "\ud83e\udd48",
-        "price": "1000",
+        "price": "500",
         "features": [
+            "Join open plays",
+            "View and book sports venues, tournaments and events",
             "Priority booking",
             "Discounted activity fees",
-            "Early access to tournaments"
+            "Book trainers",
+            "Subscription options: 3, 6, 9, 12 months"
         ]
     },
     {
         "id": "Gold",
         "name": "GOLD PLAN",
         "badge": "\ud83e\udd47",
-        "price": "24.99",
+        "price": "1500",
         "features": [
             "All Silver benefits",
-            "Exclusive coaching classes",
+            "Any time booking for venues, tournaments and events without payment",
             "Premium trainer sessions"
         ]
     },
@@ -37,7 +41,7 @@
         "id": "Platinum",
         "name": "PLATINUM PLAN",
         "badge": "\ud83d\udc8e",
-        "price": "49.99",
+        "price": "2000",
         "features": [
             "All Gold benefits",
             "Special adventure packages",

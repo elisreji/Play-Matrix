@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (in_array($userFound['email'], $adminEmails) || (isset($userFound['role']) && $userFound['role'] === 'Admin')) {
                 header("Location: admin.php");
             } else {
-                header("Location: 2.php");
+                header("Location: dashboard.php");
             }
             exit;
         }

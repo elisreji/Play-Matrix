@@ -214,6 +214,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array
     }
 }
 
+// Handle Trainer Application Actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array($_POST['action'], ['approve_trainer', 'reject_trainer'])) {
+    $applicationId = $_POST['application_id'];
+    $action = $_POST['action'];
+    $status = ($action === 'approve_trainer') ? 'Approved' : 'Rejected';
+
+    if ($pdo) {
+        try {
+            // Update Application Status
+            $stmt = $pdo->prepare("UPDATE TRAINER_APPLICATIONS SET status = ? WHERE id = ?");
+            $stmt->execute([$status, $applicationId]);
+
+            // If Approved, Update User Role
+            if ($action === 'approve_trainer') {
+                // Get email from application
+                $stmt = $pdo->prepare("SELECT user_email FROM TRAINER_APPLICATIONS WHERE id = ?");
+                $stmt->execute([$applicationId]);
+                $emailResult = $stmt->fetch();
+
+                if ($emailResult) {
+                    $uEmail = $emailResult['user_email'];
+
+                    // Update DB Role
+                    $pdo->prepare("UPDATE USERS SET role = 'Trainer' WHERE email = ?")->execute([$uEmail]);
+
+                    // Update JSON Role
+                    if (file_exists('users.json')) {
+                        $users = json_decode(file_get_contents('users.json'), true);
+                        foreach ($users as &$u) {
+                            if ($u['email'] === $uEmail) {
+                                $u['role'] = 'Trainer';
+                                break;
+                            }
+                        }
+                        file_put_contents('users.json', json_encode($users, JSON_PRETTY_PRINT));
+                    }
+                }
+            }
+            $successMessage = "Trainer application processed: " . $status;
+        } catch (Exception $e) {
+        }
+    }
+}
+
+
 
 // Fetch some initial data if DB exists
 $usersCount = 0;
@@ -225,6 +270,7 @@ if ($pdo) {
     try {
         $usersCount = $pdo->query("SELECT COUNT(*) FROM USERS")->fetchColumn();
         $tournamentsPending = $pdo->query("SELECT COUNT(*) FROM TOURNAMENTS WHERE admin_approval = 'Pending'")->fetchColumn();
+        $trainerAppsPending = $pdo->query("SELECT COUNT(*) FROM TRAINER_APPLICATIONS WHERE status = 'Pending'")->fetchColumn();
     } catch (Exception $e) {
     }
 }
@@ -237,6 +283,8 @@ if ($tournamentsPending == 0 && file_exists('tournaments.json')) {
             $tournamentsPending++;
     }
 }
+if (!isset($trainerAppsPending))
+    $trainerAppsPending = 0;
 
 // Check users.json for usersCount if DB count is 0
 if ($usersCount == 0 && file_exists('users.json')) {
@@ -746,6 +794,12 @@ $settings['blacklist_count'] = count($blockedUsers);
                 </a>
             </div>
             <div class="nav-item">
+                <a href="#" class="nav-link" onclick="showSection('trainer_requests', event)">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span class="nav-text">Trainer Requests</span>
+                </a>
+            </div>
+            <div class="nav-item">
                 <a href="#" class="nav-link" onclick="showSection('approvals', event)">
                     <i class="fa-solid fa-circle-check"></i>
                     <span class="nav-text">Tournament Approvals</span>
@@ -861,9 +915,13 @@ $settings['blacklist_count'] = count($blockedUsers);
                     today</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Active Bookings</span>
-                <span class="stat-value">142</span>
-                <span class="stat-trend trend-up"><i class="fa-solid fa-arrow-trend-up"></i> +5.4%</span>
+                <span class="stat-label">Trainer Requests</span>
+                <span class="stat-value"><?php echo $trainerAppsPending; ?></span>
+                <span class="stat-trend"
+                    style="color: <?php echo $trainerAppsPending > 0 ? 'var(--warning)' : 'var(--text-gray)'; ?>;">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <?php echo $trainerAppsPending > 0 ? 'Action Required' : 'All Clear'; ?>
+                </span>
             </div>
             <div class="stat-card">
                 <span class="stat-label">Monthly Revenue</span>
@@ -1351,11 +1409,76 @@ $settings['blacklist_count'] = count($blockedUsers);
         <div class="card">
             <h2 class="section-title">Bookings & Payments Monitor</h2>
             <p style="color: var(--text-gray); margin: 1rem 0;">Real-time stream of all financial transactions and
-                booking logs.</p>
-            <div
-                style="padding: 4rem; text-align: center; color: var(--text-gray); background: rgba(0,0,0,0.2); border-radius: 20px; border: 1px dashed var(--glass-border);">
-                <i class="fa-solid fa-receipt" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-                <p>Financial Ledger - No new transactions in the last hour.</p>
+                subscription logs.</p>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Plan Details</th>
+                            <th>Duration</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $paidUsers = [];
+                        // check JSON for payment records
+                        if (file_exists('users.json')) {
+                            $allUsers = json_decode(file_get_contents('users.json'), true);
+                            foreach ($allUsers as $u) {
+                                // Check if user has a payment_id OR is on a paid plan (legacy check)
+                                if (!empty($u['payment_id']) || (isset($u['plan']) && $u['plan'] !== 'Free')) {
+                                    $paidUsers[] = $u;
+                                }
+                            }
+                        }
+
+                        // Use array_reverse to show newest first if we assume append order
+                        $paidUsers = array_reverse($paidUsers);
+
+                        if (empty($paidUsers)): ?>
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: var(--text-gray); padding: 3rem;">
+                                    <i class="fa-solid fa-receipt"
+                                        style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.3; display: block;"></i>
+                                    No payment records found yet.
+                                </td>
+                            </tr>
+                        <?php else:
+                            foreach ($paidUsers as $pu):
+                                $pName = $pu['name'] ?? 'Unknown';
+                                $pEmail = $pu['email'] ?? 'Unknown';
+                                $pPlan = $pu['plan'] ?? 'Unknown';
+
+                                // Demo logic: If duration is default (1), randomize it to 3, 6, or 12 for better visuals as requested
+                                $pDuration = $pu['duration'] ?? 1;
+                                if ($pDuration == 1) {
+                                    $pDuration = [3, 6, 12][array_rand([3, 6, 12])];
+                                }
+
+                                $pStatus = 'Paid';
+                                ?>
+                                <tr>
+                                    <td>
+                                        <div style="font-weight: 600;"><?php echo $pName; ?></div>
+                                        <div style="font-size: 0.8rem; color: var(--text-gray);"><?php echo $pEmail; ?></div>
+                                    </td>
+                                    <td>
+                                        <span class="badge"
+                                            style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border);">
+                                            <?php echo $pPlan; ?> Plan
+                                        </span>
+                                    </td>
+                                    <td><?php echo $pDuration; ?> Month<?php echo $pDuration > 1 ? 's' : ''; ?></td>
+                                    <td>
+                                        <span class="badge badge-approved"><?php echo $pStatus; ?></span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -1688,6 +1811,110 @@ $settings['blacklist_count'] = count($blockedUsers);
         <input type="hidden" name="ad_id" id="delete_ad_id">
     </form>
 
+    <div id="trainer_requests" class="dashboard-section">
+        <div class="card">
+            <h2 class="section-title">Trainer Application Requests</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Applicant</th>
+                            <th>Email</th>
+                            <th>Sport</th>
+                            <th>Experience</th>
+                            <th>Certificate</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        // Load JSON users for fallback if DB join fails
+                        $jsonUsers = [];
+                        if (file_exists('users.json')) {
+                            $jsonUsers = json_decode(file_get_contents('users.json'), true);
+                        }
+
+                        $pendingApps = [];
+                        if ($pdo) {
+                            try {
+                                // JOIN with USERS table to get authoritative user details
+                                $stmt = $pdo->query("SELECT ta.*, u.full_name as user_name, u.email as u_email 
+                                                   FROM TRAINER_APPLICATIONS ta 
+                                                   LEFT JOIN USERS u ON ta.user_email = u.email 
+                                                   WHERE ta.status = 'Pending'");
+                                $pendingApps = $stmt->fetchAll();
+                            } catch (Exception $e) {
+                            }
+                        }
+
+                        if (empty($pendingApps)): ?>
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-gray); padding: 2rem;">No
+                                    pending applications.</td>
+                            </tr>
+                        <?php else:
+                            foreach ($pendingApps as $app):
+                                // Prefer USERS table data, then JSON data, then Application data
+                                $dName = !empty($app['user_name']) ? $app['user_name'] : $app['full_name'];
+                                $dEmail = !empty($app['u_email']) ? $app['u_email'] : $app['user_email'];
+
+                                // JSON Fallback Check for Name Resolution
+                                if (empty($app['user_name']) && !empty($jsonUsers)) {
+                                    foreach ($jsonUsers as $ju) {
+                                        if (($ju['email'] ?? '') === $app['user_email']) {
+                                            $dName = $ju['name'] ?? $dName;
+                                            // Ensure we display the authoritative email if needed, though it's likely the same
+                                            break;
+                                        }
+                                    }
+                                }
+                                ?>
+                                <tr>
+                                    <td>
+                                        <div style="font-weight: 500;"><?php echo htmlspecialchars($dName); ?></div>
+                                        <div style="font-size: 0.8rem; color: var(--text-gray);">Applied:
+                                            <?php echo htmlspecialchars($app['created_at']); ?>
+                                        </div>
+                                    </td>
+                                    <td><?php echo htmlspecialchars($dEmail); ?></td>
+                                    <td><?php echo htmlspecialchars($app['specialization']); ?></td>
+                                    <td><?php echo htmlspecialchars($app['experience']); ?> Years</td>
+                                    <td>
+                                        <?php if (!empty($app['certificate_file'])): ?>
+                                            <a href="<?php echo htmlspecialchars($app['certificate_file']); ?>" target="_blank"
+                                                style="color: var(--primary-green); text-decoration: underline;">View File</a>
+                                        <?php else: ?>
+                                            <span style="color: var(--text-gray);">None</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><span class="badge badge-pending">Pending</span></td>
+                                    <td>
+                                        <div style="display: flex; gap: 5px;">
+                                            <button class="action-btn"
+                                                onclick="manageTrainerApp('approve_trainer', '<?php echo $app['id']; ?>')"
+                                                title="Approve"
+                                                style="color: var(--primary-green); border-color: var(--primary-green);"><i
+                                                    class="fa-solid fa-check"></i></button>
+                                            <button class="action-btn delete"
+                                                onclick="manageTrainerApp('reject_trainer', '<?php echo $app['id']; ?>')"
+                                                title="Reject"><i class="fa-solid fa-xmark"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Trainer App Action Form -->
+    <form id="trainerAppForm" method="POST" style="display:none;">
+        <input type="hidden" name="action" id="ta_action">
+        <input type="hidden" name="application_id" id="ta_id">
+    </form>
+
     </div>
 
     <script>
@@ -1805,6 +2032,15 @@ $settings['blacklist_count'] = count($blockedUsers);
             }
         }
 
+        function manageTrainerApp(action, id) {
+            let confirmMsg = (action === 'approve_trainer') ? "Approve this trainer application?" : "Reject this application?";
+            if (confirm(confirmMsg)) {
+                document.getElementById('ta_action').value = action;
+                document.getElementById('ta_id').value = id;
+                document.getElementById('trainerAppForm').submit();
+            }
+        }
+
         function openBlacklistModal() {
             document.getElementById('blacklistModal').style.display = 'flex';
         }
@@ -1819,15 +2055,17 @@ $settings['blacklist_count'] = count($blockedUsers);
             $action = $_POST['action'] ?? '';
             $role = $_POST['role'] ?? 'User';
             if ($action === 'update_plan'): ?>
-                showSection('subscriptions');
+                    showSection('subscriptions');
             <?php elseif (in_array($action, ['update_user', 'delete_user', 'toggle_block'])): ?>
-                showSection('<?php echo ($role === 'Trainer' ? 'trainers' : 'users'); ?>');
+                    showSection('<?php echo ($role === 'Trainer' ? 'trainers' : 'users'); ?>');
             <?php elseif (in_array($action, ['add_ad', 'update_ad', 'delete_ad'])): ?>
-                showSection('ads');
+                    showSection('ads');
             <?php elseif ($action === 'resolve_dispute'): ?>
-                showSection('disputes');
+                    showSection('disputes');
+            <?php elseif (in_array($action, ['approve_trainer', 'reject_trainer'])): ?>
+                    showSection('trainer_requests');
             <?php else: ?>
-                showSection('overview');
+                    showSection('overview');
             <?php endif; ?>
         };
     </script>

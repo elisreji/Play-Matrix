@@ -29,6 +29,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
 
+    // --- Logical Validation ---
+    $currentDate = date('Y-m-d');
+    $currentTime = date('H:i');
+
+    if ($date < $currentDate) {
+        echo json_encode(['success' => false, 'message' => 'Date cannot be in the past.']);
+        exit;
+    }
+
+    if ($date === $currentDate && $startTime <= $currentTime) {
+        echo json_encode(['success' => false, 'message' => 'Start time must be in the future for today.']);
+        exit;
+    }
+
+    if ($endTime <= $startTime) {
+        echo json_encode(['success' => false, 'message' => 'End time must be after start time.']);
+        exit;
+    }
+
     try {
         $stmt = $pdo->prepare("INSERT INTO GAMES (host_name, sport, venue, game_date, start_time, end_time, game_type, skill_level, price, max_players) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 

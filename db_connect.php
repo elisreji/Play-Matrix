@@ -36,6 +36,19 @@ try {
     } catch (Exception $e) {
     }
 
+    // Create TRAINER_APPLICATIONS table
+    $sql_trainer = "CREATE TABLE IF NOT EXISTS TRAINER_APPLICATIONS (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_email VARCHAR(100) NOT NULL,
+        full_name VARCHAR(100) NOT NULL,
+        specialization VARCHAR(100),
+        experience VARCHAR(50),
+        certificate_file VARCHAR(255),
+        status VARCHAR(20) DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )";
+    $pdo->exec($sql_trainer);
+
 } catch (PDOException $e) {
     // If database doesn't exist, we fallback to NULL.
     // The application scripts check if $pdo exists.
