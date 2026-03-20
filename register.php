@@ -130,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $mail->Host = 'smtp.gmail.com';
                 $mail->SMTPAuth = true;
                 $mail->Username = 'elisreji2028@mca.ajce.in';
-                $mail->Password = 'dtedqdekswzflopc';
+                $mail->Password = 'cnetgshrpmzhvhga';
                 $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
                 $mail->Port = 587;
                 $mail->SMTPOptions = array(

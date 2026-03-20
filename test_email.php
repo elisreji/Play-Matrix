@@ -1,4 +1,3 @@
-s
 <!DOCTYPE html>
 <html>
 
@@ -50,7 +49,7 @@ s
         $mail->Host = 'smtp.gmail.com';
         $mail->SMTPAuth = true;
         $mail->Username = 'elisreji2028@mca.ajce.in';
-        $mail->Password = 'dtedqdekswzflopc';
+        $mail->Password = 'cnetgshrpmzhvhga';
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = 587;
 
