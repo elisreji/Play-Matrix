@@ -956,7 +956,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             var options = {
-                "key": "<?php echo RAZORPAY_KEY_ID; ?>",
+                "key": "rzp_test_SL8TAla7mMpzDe",
                 "amount": amountPaise,
                 "currency": "INR",
                 "name": "PlayMatrix",
