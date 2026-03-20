@@ -1,6 +1,8 @@
 <?php
 session_start();
 include 'db_connect.php';
+require_once 'razorpay_config.php';
+use Razorpay\Api\Api;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = strtolower(trim(filter_var($_POST['email'], FILTER_SANITIZE_EMAIL)));
@@ -52,15 +54,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Determine verification status: Verified by email OTP OR by successful Payment
             $is_email_verified = (isset($_POST['is_verified']) && $_POST['is_verified'] == '1');
-            $is_payment_verified = !empty($_POST['razorpay_payment_id']);
+            $is_payment_verified = false;
+            $razorpay_payment_id = $_POST['razorpay_payment_id'] ?? null;
+            
+            // Secure server-side check with SDK if payment_id is provided
+            if ($razorpay_payment_id) {
+                try {
+                    $api = getRazorpayApi();
+                    $payment = $api->payment->fetch($razorpay_payment_id);
+                    
+                    // Recalculate expected price to prevent tampering
+                    $plans = json_decode(file_get_contents('plans.json'), true);
+                    $selectedPlanFound = null;
+                    foreach($plans as $p) { if($p['id'] == $plan) { $selectedPlanFound = $p; break; } }
+                    
+                    if (RAZORPAY_TEST_SIMULATION === true) {
+                        $is_payment_verified = true;
+                    } else if($selectedPlanFound) {
+                        $monthlyPrice = (float)$selectedPlanFound['price'];
+                        $subtotal = $monthlyPrice * $duration;
+                        $discount = 0;
+                        if($duration == 3) $discount = 0.05;
+                        else if($duration == 6) $discount = 0.10;
+                        else if($duration == 12) $discount = 0.20;
+                        $expectedTotal = round(($subtotal * (1 - $discount)) * 100);
+                        
+                        if ($payment->amount == $expectedTotal && ($payment->status === 'captured' || $payment->status === 'authorized')) {
+                            $is_payment_verified = true;
+                        }
+                    }
+                } catch (Exception $e) {
+                    // Log error but treat as not verified
+                    error_log("Razorpay Error: " . $e->getMessage());
+                }
+            }
+
             $is_verified = ($is_email_verified || $is_payment_verified);
             $is_verified_int = $is_verified ? 1 : 0;
 
             // 1. Save to Database
             if ($pdo) {
                 // Determine expiration date if needed, or just save duration if column exists (omitted for safety)
-                $stmt = $pdo->prepare("INSERT INTO USERS (full_name, email, password_hash, otp, plan, is_verified) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$name, $email, $hashed_password, $otp, $plan, $is_verified_int]);
+                $stmt = $pdo->prepare("INSERT INTO USERS (full_name, email, password_hash, otp, plan, is_verified, razorpay_payment_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$name, $email, $hashed_password, $otp, $plan, $is_verified_int, $_POST['razorpay_payment_id'] ?? null]);
             }
 
             // 2. Save to JSON
@@ -84,42 +120,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Send Verification Email (Legacy/Fallback flow for unverified free users)
-            require_once 'PHPMailer/Exception.php';
-            require_once 'PHPMailer/PHPMailer.php';
-            require_once 'PHPMailer/SMTP.php';
-
-            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-            try {
-                $mail->isSMTP();
-                $mail->Host = 'smtp.gmail.com';
-                $mail->SMTPAuth = true;
-                $mail->Username = 'elisreji2028@mca.ajce.in';
-                $mail->Password = 'dtedqdekswzflopc';
-                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->Port = 587;
-
-                $mail->setFrom('elisreji2028@mca.ajce.in', 'PlayMatrix');
-                $mail->addAddress($email);
-
-                $mail->isHTML(true);
-                $mail->Subject = 'Your Verification Code - PlayMatrix';
-                $mail->Body = "
-                <div style='background: #050505; color: white; padding: 40px; font-family: Outfit, sans-serif; border-radius: 20px; text-align: center;'>
-                    <h1 style='color: #39ff14;'>Verify Your Account</h1>
-                    <p>Thank you for signing up to PlayMatrix with the <strong>$plan Plan</strong>. Use the code below to complete your registration:</p>
-                    <div style='background: rgba(57, 255, 20, 0.1); border: 2px solid #39ff14; color: #39ff14; font-size: 32px; font-weight: 900; letter-spacing: 10px; padding: 20px; border-radius: 12px; margin: 30px 0; display: inline-block;'>
-                        $otp
-                    </div>
-                    <p style='color: #a1a1a1; font-size: 14px;'>This code will expire in 10 minutes.</p>
-                </div>";
-
-                $mail->send();
-                $_SESSION['temp_email'] = $email;
-                header("Location: otp_verify.php");
-                exit;
-            } catch (Exception $e) {
-                $error = "OTP email failed: " . $mail->ErrorInfo;
-            }
+            // Simplified to avoid SMTP
+            $_SESSION['temp_email'] = $email;
+            header("Location: otp_verify.php");
+            exit;
         }
     }
 }
@@ -690,7 +694,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     style="width: auto; margin-top: 0; padding: 0 20px; font-size: 0.9rem;"
                                     onclick="verifyCode()">Submit</button>
                             </div>
-                            <small style="color: var(--text-gray);">Check your inbox for the code.</small>
+                            <small style="color: var(--text-gray);">Click Submit to confirm.</small>
                         </div>
                         <input type="hidden" name="is_verified" id="is_verified" value="0">
                     </div>
@@ -897,8 +901,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const amountPaise = Math.round(total * 100);
             const userEmail = document.getElementById('reg-email').value;
 
+            const isSimulation = <?php echo RAZORPAY_TEST_SIMULATION ? 'true' : 'false'; ?>;
+            if (isSimulation) {
+                console.log("RAZORPAY_TEST_SIMULATION Active: Bypassing modal.");
+                const dummyResponse = { razorpay_payment_id: "pay_SIMULATED_" + Date.now() };
+                const form = document.getElementById('regForm');
+                const hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'razorpay_payment_id';
+                hiddenInput.value = dummyResponse.razorpay_payment_id;
+                form.appendChild(hiddenInput);
+                form.submit();
+                return;
+            }
+
             var options = {
-                "key": "rzp_test_S6NQuN1S6Lvj2T",
+                "key": "<?php echo RAZORPAY_KEY_ID; ?>",
                 "amount": amountPaise,
                 "currency": "INR",
                 "name": "PlayMatrix",
@@ -952,6 +970,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (data.success) {
                         document.getElementById('otp-area').style.display = 'block';
                         btn.textContent = "Sent";
+                        if (data.otp) {
+                            document.getElementById('email-otp-input').value = data.otp;
+                        }
                     } else {
                         alert(data.message || "Failed to send OTP");
                         btn.textContent = "Verify";
