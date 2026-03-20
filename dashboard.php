@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once 'razorpay_config.php';
 if (!isset($_SESSION['user'])) {
     header("Location: login.php");
     exit;
@@ -29,6 +30,8 @@ $userName = $currentUser['name'] ?? 'Player One';
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Razorpay SDK -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
     <style>
         :root {
@@ -639,6 +642,19 @@ $userName = $currentUser['name'] ?? 'Player One';
                     <div class="stat-value">04</div>
                     <div class="stat-label">Active Bookings</div>
                 </div>
+                <!-- Wallet Wallet Card -->
+                <div class="stat-card" style="background: linear-gradient(145deg, #0c0c0c, #1a1a1a); border: 1px solid var(--primary-green); box-shadow: 0 0 15px rgba(57, 255, 20, 0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div class="stat-icon" style="margin-bottom: 0.5rem;"><i class="fa-solid fa-wallet"></i></div>
+                            <div class="stat-value" id="walletBalance">₹ <?php echo number_format($currentUser['wallet_balance'] ?? 0, 2); ?></div>
+                            <div class="stat-label">Matrix Wallet</div>
+                        </div>
+                        <button onclick="openAddFundsModal()" style="background: var(--primary-green); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.8rem;">
+                            <i class="fa-solid fa-plus"></i> Add Funds
+                        </button>
+                    </div>
+                </div>
             </section>
 
             <section class="activity-section">
@@ -1052,6 +1068,7 @@ $userName = $currentUser['name'] ?? 'Player One';
             </div>
         </div>
 
+        <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
         <script>
             function openTrainerModal() {
                 document.getElementById('trainerModal').style.display = 'flex';
@@ -1518,38 +1535,41 @@ $userName = $currentUser['name'] ?? 'Player One';
             let pendingJoinData = null;
 
             function openPaymentModal(game, btn) {
-                const modal = document.getElementById('paymentModal');
-                document.getElementById('payAmount').innerText = game.priceDisplay;
-                document.getElementById('payTotal').innerText = game.priceDisplay;
-                document.getElementById('payMsg').innerText = '';
-                
-                pendingJoinData = { btn, gameId: game.id };
-                modal.style.display = 'flex';
+                let amountStr = game.priceDisplay.replace(/[^0-9.]/g, "");
+                let amountVal = parseFloat(amountStr) || 0;
+                let amountPaise = Math.round(amountVal * 100);
+
+                if (amountPaise <= 0) {
+                    processJoin(btn, game.id);
+                    return;
+                }
+
+                var options = {
+                    "key": "rzp_test_SL8TAla7mMpzDe",
+                    "amount": amountPaise,
+                    "currency": "INR",
+                    "name": "PlayMatrix",
+                    "description": "Join requested Game: " + game.location,
+                    "handler": async function(response) {
+                        btn.innerText = "Processing...";
+                        await processJoin(btn, game.id);
+                    },
+                    "prefill": {
+                        "email": "<?php echo addslashes($email); ?>"
+                    },
+                    "theme": {
+                        "color": "#39ff14"
+                    }
+                };
+                var rzp1 = new Razorpay(options);
+                rzp1.on('payment.failed', function (response) {
+                    alert("Payment Failed: " + response.error.description);
+                });
+                rzp1.open();
             }
 
             async function completePayment() {
-                if (!pendingJoinData) return;
-                
-                const payBtn = document.getElementById('payConfirmBtn');
-                const msg = document.getElementById('payMsg');
-                
-                payBtn.disabled = true;
-                payBtn.innerText = 'Processing...';
-                
-                // Simulate payment gateway delay
-                setTimeout(async () => {
-                    msg.style.color = 'var(--primary-green)';
-                    msg.innerText = 'Payment Successful! Joining game...';
-                    
-                    await processJoin(pendingJoinData.btn, pendingJoinData.gameId);
-                    
-                    setTimeout(() => {
-                        document.getElementById('paymentModal').style.display = 'none';
-                        payBtn.disabled = false;
-                        payBtn.innerText = 'Pay & Join Now';
-                        pendingJoinData = null;
-                    }, 1000);
-                }, 1500);
+                // Removed local simulation modal
             }
 
             async function processJoin(btn, gameId) {
@@ -1630,6 +1650,114 @@ $userName = $currentUser['name'] ?? 'Player One';
                         link.classList.add('active');
                     }
                 });
+            }
+        </script>
+        <!-- ADD FUNDS MODAL -->
+        <div id="addFundsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+            <div class="section-card" style="width: 100%; max-width: 400px; padding: 2rem; border-radius: 20px; text-align: center;">
+                <h3 style="margin-bottom: 1.5rem; color: var(--primary-green);">Top Up Your Wallet</h3>
+                <p style="color: var(--text-gray); margin-bottom: 1.5rem; font-size: 0.9rem;">Funds can be used for venue bookings and joining paid games.</p>
+                
+                <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; color: var(--text-white); margin-bottom: 10px; font-size: 0.9rem;">Amount (INR)</label>
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--text-gray);">₹</span>
+                        <input type="number" id="addFundsAmount" value="500" min="10" style="width: 100%; padding: 12px 12px 12px 35px; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; border-radius: 10px; font-size: 1.2rem; font-weight: 700;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 2rem;">
+                    <button onclick="setAmount(200)" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border); padding: 8px; border-radius: 8px; cursor: pointer;">₹200</button>
+                    <button onclick="setAmount(500)" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border); padding: 8px; border-radius: 8px; cursor: pointer;">₹500</button>
+                    <button onclick="setAmount(1000)" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border); padding: 8px; border-radius: 8px; cursor: pointer;">₹1000</button>
+                </div>
+
+                <button onclick="startWalletPayment()" style="width: 100%; padding: 1rem; background: var(--primary-green); color: black; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.3s;">Proceed to Pay</button>
+                <button onclick="closeAddFundsModal()" style="width: 100%; padding: 1rem; background: transparent; color: var(--text-gray); border: none; border-radius: 12px; margin-top: 10px; cursor: pointer;">Cancel</button>
+            </div>
+        </div>
+
+        <script>
+            function openAddFundsModal() {
+                document.getElementById('addFundsModal').style.display = 'flex';
+            }
+
+            function closeAddFundsModal() {
+                document.getElementById('addFundsModal').style.display = 'none';
+            }
+
+            function setAmount(amt) {
+                document.getElementById('addFundsAmount').value = amt;
+            }
+
+            function startWalletPayment() {
+                const amount = document.getElementById('addFundsAmount').value;
+                if (amount < 10) {
+                    alert("Please enter at least ₹10.");
+                    return;
+                }
+
+                const amountPaise = amount * 100;
+                const isSimulation = <?php echo RAZORPAY_TEST_SIMULATION ? 'true' : 'false'; ?>;
+                if (isSimulation) {
+                    console.log("RAZORPAY_TEST_SIMULATION Active: Bypassing modal.");
+                    const dummyResponse = { razorpay_payment_id: "pay_SIMULATED_" + Date.now() };
+                    fetch('update_wallet.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            amount: amount,
+                            payment_id: dummyResponse.razorpay_payment_id
+                        })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            document.getElementById('walletBalance').textContent = '₹ ' + parseFloat(data.new_balance).toFixed(2);
+                            alert("Wallet updated successfully (Simulated)!");
+                            closeAddFundsModal();
+                        } else {
+                            alert("Error updating wallet: " + data.message);
+                        }
+                    });
+                    return;
+                }
+
+                const options = {
+                    "key": "<?php echo RAZORPAY_KEY_ID; ?>",
+                    "amount": amountPaise,
+                    "currency": "INR",
+                    "name": "PlayMatrix Wallet",
+                    "description": "Add funds to your Matrix Wallet",
+                    "handler": function (response) {
+                        fetch('update_wallet.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                amount: amount,
+                                payment_id: response.razorpay_payment_id
+                            })
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                document.getElementById('walletBalance').textContent = '₹ ' + parseFloat(data.new_balance).toFixed(2);
+                                alert("Wallet updated successfully!");
+                                closeAddFundsModal();
+                            } else {
+                                alert("Error updating wallet: " + data.message);
+                            }
+                        });
+                    },
+                    "prefill": {
+                        "email": "<?php echo $email; ?>"
+                    },
+                    "theme": {
+                        "color": "#39ff14"
+                    }
+                };
+                const rzp = new Razorpay(options);
+                rzp.open();
             }
         </script>
     </main>
