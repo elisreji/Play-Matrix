@@ -120,10 +120,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Send Verification Email (Legacy/Fallback flow for unverified free users)
-            // Simplified to avoid SMTP
-            $_SESSION['temp_email'] = $email;
-            header("Location: otp_verify.php");
-            exit;
+            require_once 'PHPMailer/Exception.php';
+            require_once 'PHPMailer/PHPMailer.php';
+            require_once 'PHPMailer/SMTP.php';
+
+            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+            try {
+                $mail->isSMTP();
+                $mail->Host = 'smtp.gmail.com';
+                $mail->SMTPAuth = true;
+                $mail->Username = 'elisreji2028@mca.ajce.in';
+                $mail->Password = 'dtedqdekswzflopc';
+                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+                $mail->Port = 587;
+                $mail->SMTPOptions = array(
+                    'ssl' => array(
+                        'verify_peer' => false,
+                        'verify_peer_name' => false,
+                        'allow_self_signed' => true
+                    )
+                );
+
+                $mail->setFrom('elisreji2028@mca.ajce.in', 'PlayMatrix');
+                $mail->addAddress($email);
+
+                $mail->isHTML(true);
+                $mail->Subject = 'Your Verification Code - PlayMatrix';
+                $mail->Body = "
+                <div style='background: #050505; color: white; padding: 40px; font-family: Outfit, sans-serif; border-radius: 20px; text-align: center;'>
+                    <h1 style='color: #39ff14;'>Verify Your Account</h1>
+                    <p>Thank you for signing up to PlayMatrix with the <strong>$plan Plan</strong>. Use the code below to complete your registration:</p>
+                    <div style='background: rgba(57, 255, 20, 0.1); border: 2px solid #39ff14; color: #39ff14; font-size: 32px; font-weight: 900; letter-spacing: 10px; padding: 20px; border-radius: 12px; margin: 30px 0; display: inline-block;'>
+                        $otp
+                    </div>
+                    <p style='color: #a1a1a1; font-size: 14px;'>This code will expire in 10 minutes.</p>
+                </div>";
+
+                $mail->send();
+                $_SESSION['temp_email'] = $email;
+                header("Location: otp_verify.php");
+                exit;
+            } catch (Exception $e) {
+                // If it fails, report error instead of bypassing
+                $error = "OTP email failed: " . $mail->ErrorInfo;
+            }
         }
     }
 }
@@ -694,7 +734,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     style="width: auto; margin-top: 0; padding: 0 20px; font-size: 0.9rem;"
                                     onclick="verifyCode()">Submit</button>
                             </div>
-                            <small style="color: var(--text-gray);">Click Submit to confirm.</small>
+                            <small style="color: var(--text-gray);">Check your inbox for the code.</small>
                         </div>
                         <input type="hidden" name="is_verified" id="is_verified" value="0">
                     </div>
@@ -970,9 +1010,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (data.success) {
                         document.getElementById('otp-area').style.display = 'block';
                         btn.textContent = "Sent";
-                        if (data.otp) {
-                            document.getElementById('email-otp-input').value = data.otp;
-                        }
                     } else {
                         alert(data.message || "Failed to send OTP");
                         btn.textContent = "Verify";

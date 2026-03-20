@@ -5,6 +5,9 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 session_start();
+require_once 'PHPMailer/Exception.php';
+require_once 'PHPMailer/PHPMailer.php';
+require_once 'PHPMailer/SMTP.php';
 include 'db_connect.php';
 
 // Clean buffer before sending headers
@@ -59,13 +62,47 @@ try {
     $_SESSION['verification_otp'] = $otp;
     $_SESSION['verification_email'] = $email;
 
-    // Return success immediately, with OTP to auto-fill
-    echo json_encode([
-        'success' => true, 
-        'otp' => $otp
-    ]);
+    $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+
+    // Server settings
+    $mail->isSMTP();
+    $mail->Host = 'smtp.gmail.com';
+    $mail->SMTPAuth = true;
+    $mail->Username = 'elisreji2028@mca.ajce.in';
+    $mail->Password = 'dtedqdekswzflopc';
+    $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+    $mail->Port = 587;
+    
+    // Bypass local SSL verification issues just in case
+    $mail->SMTPOptions = array(
+        'ssl' => array(
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            'allow_self_signed' => true
+        )
+    );
+
+    // Recipients
+    $mail->setFrom('elisreji2028@mca.ajce.in', 'PlayMatrix');
+    $mail->addAddress($email);
+
+    // Content
+    $mail->isHTML(true);
+    $mail->Subject = 'Verify Your Email - PlayMatrix';
+    $mail->Body = "
+    <div style='background: #050505; color: white; padding: 40px; font-family: Outfit, sans-serif; border-radius: 20px; text-align: center;'>
+        <h1 style='color: #39ff14;'>Email Verification</h1>
+        <p>Use the code below to verify your email address:</p>
+        <div style='background: rgba(57, 255, 20, 0.1); border: 2px solid #39ff14; color: #39ff14; font-size: 32px; font-weight: 900; letter-spacing: 10px; padding: 20px; border-radius: 12px; margin: 30px 0; display: inline-block;'>
+            $otp
+        </div>
+        <p style='color: #a1a1a1; font-size: 14px;'>This code will expire in 10 minutes.</p>
+    </div>";
+
+    $mail->send();
+    echo json_encode(['success' => true]);
 
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'SMTP Error: ' . $e->getMessage()]);
 }
 ?>
