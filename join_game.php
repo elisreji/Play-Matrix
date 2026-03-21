@@ -34,6 +34,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $result = $stmt->execute([$gameId, $email]);
 
         if ($result) {
+            // Log Payment if there is a price
+            $gameStmt = $pdo->prepare("SELECT price FROM GAMES WHERE id = ?");
+            $gameStmt->execute([$gameId]);
+            $gameDetails = $gameStmt->fetch(PDO::FETCH_ASSOC);
+            
+            $amountVal = 0;
+            if ($gameDetails && $gameDetails['price'] !== 'Free') {
+                $amountVal = floatval(preg_replace('/[^0-9.]/', '', $gameDetails['price']));
+            }
+
+            if ($amountVal > 0) {
+                // Get user_id
+                $uStmt = $pdo->prepare("SELECT user_id FROM USERS WHERE email = ?");
+                $uStmt->execute([$email]);
+                $uId = $uStmt->fetchColumn();
+                
+                if ($uId) {
+                    $pStmt = $pdo->prepare("INSERT INTO PAYMENTS (user_id, amount, payment_method, payment_status, paid_at) VALUES (?, ?, 'Card', 'Success', NOW())");
+                    $pStmt->execute([$uId, $amountVal]);
+                }
+            }
+
             echo json_encode(['success' => true, 'message' => 'Successfully joined the game!']);
         } else {
             echo json_encode(['success' => false, 'message' => 'Failed to join game.']);

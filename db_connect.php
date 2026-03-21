@@ -48,6 +48,12 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )";
     $pdo->exec($sql_trainer);
+    
+    // USERS migrations for payments
+    try { $pdo->exec("ALTER TABLE USERS ADD COLUMN razorpay_payment_id VARCHAR(100)"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE USERS ADD COLUMN wallet_balance DECIMAL(10,2) DEFAULT 0.00"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE USERS ADD COLUMN email_notif TINYINT(1) DEFAULT 1"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE USERS ADD COLUMN sms_notif TINYINT(1) DEFAULT 0"); } catch (Exception $e) {}
 
 } catch (PDOException $e) {
     // If database doesn't exist, we fallback to NULL.

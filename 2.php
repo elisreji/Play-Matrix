@@ -1,3 +1,30 @@
+<?php
+session_start();
+require_once 'db_connect.php';
+
+$dbVenues = [];
+if ($pdo) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM TRAINER_VENUES WHERE approval_status = 'Approved' ORDER BY created_at DESC");
+        $stmt->execute();
+        $dbVenues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        // Fallback to empty
+    }
+}
+$venueCount = count($dbVenues);
+
+// Fetch user data for sidebar/header
+$userName = 'Player One';
+$email = $_SESSION['user'] ?? '';
+if ($pdo && $email) {
+    try {
+        $stmt = $pdo->prepare("SELECT full_name FROM USERS WHERE email = ?");
+        $stmt->execute([$email]);
+        $userName = $stmt->fetchColumn() ?: 'Player One';
+    } catch (Exception $e) {}
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -27,6 +54,7 @@
             --gradient-card: linear-gradient(145deg, #1a1a1a, #0d0d0d);
             --input-bg: #0a0a0a;
             --nav-height: 80px;
+            --sidebar-width: 260px;
         }
 
         * {
@@ -40,113 +68,75 @@
             background-color: var(--bg-dark);
             color: var(--text-white);
             min-height: 100vh;
+            display: flex;
         }
 
-        /* Subtle Grid Background */
-        .grid-bg {
+        /* Sidebar Styling */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: #0a0a0a;
+            border-right: 1px solid var(--glass-border);
+            height: 100vh;
             position: fixed;
-            top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background-image:
-                linear-gradient(rgba(57, 255, 20, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(57, 255, 20, 0.03) 1px, transparent 1px);
-            background-size: 60px 60px;
-            z-index: -1;
-            mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
-            -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
-        }
-
-        /* Navbar */
-        .navbar {
-            height: var(--nav-height);
-            background: rgba(5, 5, 5, 0.9);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--glass-border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 3%;
-            position: sticky;
             top: 0;
-            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem 1.5rem;
+            z-index: 1000;
+            overflow-y: auto;
         }
 
-        .nav-left {
-            display: flex;
-            align-items: center;
-            gap: 2rem;
-        }
+        .sidebar::-webkit-scrollbar { width: 5px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: rgba(57, 255, 20, 0.2); border-radius: 10px; }
+        .sidebar::-webkit-scrollbar-thumb:hover { background: var(--primary-green); }
 
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 900;
-            color: var(--text-white);
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .brand {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            margin-bottom: 3rem;
             text-decoration: none;
+            color: white;
         }
 
-        .logo span {
-            color: var(--primary-green);
-        }
-
-        .location-box {
-            background: var(--input-bg);
-            border: 1px solid var(--glass-border);
-            padding: 0.6rem 1rem;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            color: var(--text-white);
-            font-size: 0.95rem;
-            cursor: pointer;
-            transition: 0.3s;
-            min-width: 220px;
-        }
-
-        .location-box:hover {
-            border-color: var(--primary-green);
-        }
-
-        .location-box i {
-            color: var(--primary-green);
-        }
-
-        /* Main Nav Links */
-        .nav-links {
-            display: flex;
-            gap: 1rem;
-            margin-left: 2rem;
-        }
-
-        .nav-link {
-            text-decoration: none;
-            color: var(--text-gray);
-            font-weight: 600;
-            font-size: 1rem;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            transition: 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .nav-link:hover {
-            color: var(--text-white);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .nav-link.active {
-            color: var(--bg-dark);
+        .brand-icon {
             background: var(--primary-green);
-            box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
+            color: var(--bg-dark);
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.3);
         }
+
+        .brand span { font-size: 1.4rem; font-weight: 700; letter-spacing: 1px; }
+
+        .nav-menu { list-style: none; flex-grow: 1; }
+        .nav-item { margin-bottom: 0.5rem; }
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 15px;
+            color: var(--text-gray);
+            text-decoration: none;
+            border-radius: 10px;
+            transition: 0.3s;
+            font-weight: 500;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: rgba(57, 255, 20, 0.1);
+            color: var(--primary-green);
+        }
+
+        .nav-link i { font-size: 1.1rem; width: 20px; text-align: center; }
+        .logout-section { border-top: 1px solid var(--glass-border); padding-top: 1.5rem; }
 
         .nav-right {
             display: flex;
@@ -195,9 +185,39 @@
         }
 
         .main-content {
-            padding: 2rem 5%;
-            max-width: 1600px;
-            margin: 0 auto;
+            margin-left: var(--sidebar-width);
+            flex-grow: 1;
+            padding: 2rem 3rem;
+            min-height: 100vh;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: #121212;
+            padding: 8px 15px;
+            border-radius: 50px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #39ff14, #00d2ff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #000;
         }
 
         /* Header Section */
@@ -589,69 +609,145 @@
         <button class="map-close" onclick="toggleMap()"><i class="fa-solid fa-xmark"></i></button>
     </div>
 
-    <button class="map-toggle-btn" onclick="toggleMap()">
-        <i class="fa-solid fa-map-location-dot"></i>
-        <span>View Map</span>
-    </button>
 
-    <nav class="navbar">
-        <div class="nav-left">
-            <a href="index.php" class="logo">
-                <i class="fa-solid fa-gamepad"></i>
-                PLAY<span>MATRIX</span>
+
+    <aside class="sidebar">
+        <a href="dashboard.php" class="brand">
+            <div class="brand-icon"><i class="fa-solid fa-rocket"></i></div>
+            <span>PLAYMATRIX</span>
+        </a>
+
+        <ul class="nav-menu">
+            <li class="nav-item">
+                <a href="dashboard.php?show=overview" class="nav-link">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Overview</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=play" class="nav-link">
+                    <i class="fa-solid fa-play"></i>
+                    <span>Play</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=tournaments" class="nav-link">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Tournaments</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=coaching" class="nav-link">
+                    <i class="fa-solid fa-user-graduate"></i>
+                    <span>Coaching</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=payments" class="nav-link">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Payment History</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="2.php" class="nav-link active">
+                    <i class="fa-solid fa-calendar-check"></i>
+                    <span>Book Venue</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=mygames" class="nav-link">
+                    <i class="fa-solid fa-gamepad"></i>
+                    <span>My Games</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=membership" class="nav-link">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span>Membership</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=refunds" class="nav-link">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span>Refund Request</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=requests" class="nav-link">
+                    <i class="fa-solid fa-envelope-open-text"></i>
+                    <span>Help & Requests</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="dashboard.php?show=settings" class="nav-link">
+                    <i class="fa-solid fa-gears"></i>
+                    <span>Settings</span>
+                </a>
+            </li>
+        </ul>
+
+        <div class="logout-section">
+            <a href="login.php" class="nav-link">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>Logout</span>
             </a>
-
-            <div class="location-box" id="locationData">
-                <i class="fa-solid fa-location-dot"></i>
-                <input type="text" id="citySearch" placeholder="Detecting Location..."
-                    style="background:transparent; border:none; color:white; width:100%; outline:none; font-weight:600;">
-            </div>
-
-            <div class="nav-links">
-                <a href="play.php" class="nav-link">Play</a>
-                <a href="2.php" class="nav-link active">Book</a>
-                <a href="#" class="nav-link">Trainer</a>
-            </div>
         </div>
+    </aside>
 
-        <div class="nav-right">
-            <div class="search-bar">
-                <i class="fa-solid fa-search"></i>
-                <input type="text" placeholder="Search for venues, sports...">
+    <main class="main-content">
+        <header>
+            <div class="welcome-text">
+                <h1 id="pageHeading">Sports Venues 🏟️</h1>
+                <p>Discover and book premium venues near you</p>
             </div>
-
-            <div class="profile-icon">
-                <i class="fa-solid fa-user"></i>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <div class="search-bar" style="width: 250px;">
+                    <i class="fa-solid fa-search"></i>
+                    <input type="text" placeholder="Search venues...">
+                </div>
+                <div class="user-profile">
+                    <span><?php echo htmlspecialchars($userName); ?></span>
+                    <div class="user-avatar">
+                        <?php echo strtoupper(substr($userName, 0, 1)); ?>
+                    </div>
+                </div>
             </div>
-        </div>
-    </nav>
+        </header>
 
-    <div class="main-content">
-        <div class="page-header">
-            <div class="page-title">
-                <h1 id="pageHeading">Sports Venues Near You</h1>
-                <p>Discover available sports venues for booking</p>
-            </div>
-        </div>
 
-        <!-- Categories Tab Bar -->
-        <div class="categories-bar">
-            <a href="#" class="category-item active">
-                Venues <span class="count">(100)</span>
-            </a>
-            <a href="#" class="category-item">
-                Coaching <span class="count">(3)</span>
-            </a>
-            <a href="#" class="category-item">
-                Events <span class="count">(2)</span>
-            </a>
-            <a href="#" class="category-item">
-                Experiences <span class="count">(3)</span>
-            </a>
-        </div>
 
         <div class="venues-grid" id="venuesContainer">
-            <!-- Venues will be injected here via JS -->
+            <?php
+            if (count($dbVenues) > 0) {
+                foreach ($dbVenues as $v) {
+                    $img = !empty($v['pic1']) ? $v['pic1'] : 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&q=80&w=600';
+                    $vname = htmlspecialchars($v['venue_name']);
+                    $vloc = htmlspecialchars($v['location']);
+                    $vsport = htmlspecialchars($v['sports_available']);
+                    $vid = $v['id'];
+                    $vtype = 'trainer';
+                    
+                    echo "
+                    <div class='venue-card' style='opacity:1; animation:none; cursor:pointer;' onclick=\"window.location.href='3.php?id={$vid}&type={$vtype}&name=" . urlencode($vname) . "&sport=" . urlencode($vsport) . "&area=" . urlencode($vloc) . "'\">
+                        <div class='card-image'>
+                            <img src='{$img}' style='opacity:1;'>
+                            <div class='dist-badge'><i class='fa-solid fa-location-dot'></i> Local</div>
+                            <div class='badge-container'><span class='badge badge-sport'>{$vsport}</span></div>
+                        </div>
+                        <div class='card-content'>
+                            <h3 class='venue-name'>{$vname}</h3>
+                            <p style='color:var(--text-gray); font-size:0.85rem;'><i class='fa-solid fa-location-dot' style='color:var(--primary-green); margin-right:5px;'></i>{$vloc}</p>
+                            <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px;'>
+                                <span style='color:var(--primary-green); font-size:0.8rem; font-weight:700;'>4.8 <i class='fa-solid fa-star'></i></span>
+                                <span style='color:var(--text-gray); font-size:0.8rem;'>24 Reviews</span>
+                            </div>
+                        </div>
+                    </div>";
+                }
+            } else {
+                echo '<div style="grid-column: 1/-1; text-align:center; padding: 3rem; color:var(--text-gray);">No sports venues available for booking yet.</div>';
+            }
+            ?>
         </div>
 
         <button class="load-more">Load More</button>
@@ -659,10 +755,23 @@
 
     <script>
         // State management
-        const allVenues = [];
-        let displayedCount = 0;
+        const allVenues = <?php echo json_encode(array_map(function($v) {
+            return [
+                'id' => $v['id'],
+                'name' => (string)$v['venue_name'],
+                'sport' => (string)$v['sports_available'],
+                'area' => (string)$v['location'],
+                'rating' => '4.8',
+                'reviews' => (int)rand(5, 45),
+                'dist' => 'Local',
+                'imgUrl' => !empty($v['pic1']) ? $v['pic1'] : 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&q=80&w=600',
+                'type' => 'trainer'
+            ];
+        }, $dbVenues), JSON_UNESCAPED_UNICODE) ?: '[]'; ?>;
+        
+        let displayedCount = <?php echo count($dbVenues); ?>;
         const BATCH_SIZE = 25;
-        let currentVenues = [];
+        let currentVenues = [...allVenues];
 
         const container = document.getElementById('venuesContainer');
         const loadMoreBtn = document.querySelector('.load-more');
@@ -684,7 +793,6 @@
         };
 
         window.addEventListener('load', () => {
-            // IMMEDIATE RENDER so the user isn't looking at an empty screen
             if (allVenues.length === 0) {
                 generateFallbackData();
                 renderBatch();
@@ -794,37 +902,9 @@
         function startOSMSearch(lat, lng, customKeyword = null) {
             currentLat = lat;
             currentLng = lng;
-            mainMap.setView([lat, lng], 13);
-
-            const locationBox = document.querySelector('.location-box');
-            locationBox.classList.add('searching');
-
-            container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 3rem; color:var(--primary-green); font-weight:700;"><i class="fa-solid fa-circle-notch fa-spin"></i> Finding turfs on OpenStreetMap...</div>';
-            loadMoreBtn.style.display = 'none';
-
-            // Overpass API Query for sports pitches
-            const radius = 10000; // 10km
-            const query = `
-                [out:json][timeout:25];
-                (
-                  node["leisure"="pitch"](around:${radius}, ${lat}, ${lng});
-                  way["leisure"="pitch"](around:${radius}, ${lat}, ${lng});
-                  node["sport"~"football|cricket|badminton|tennis|basketball"](around:${radius}, ${lat}, ${lng});
-                  way["sport"~"football|cricket|badminton|tennis|basketball"](around:${radius}, ${lat}, ${lng});
-                );
-                out center;
-            `;
-
-            fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
-                .then(res => res.json())
-                .then(data => {
-                    locationBox.classList.remove('searching');
-                    processOSMResults(data.elements, { lat, lng });
-                })
-                .catch(err => {
-                    locationBox.classList.remove('searching');
-                    useFallback("OSM API Error");
-                });
+            if (mainMap) mainMap.setView([lat, lng], 13);
+            
+            // Overpass API Query disabled as per user request to only show added venues
         }
 
         function useFallback(reason) {
@@ -897,23 +977,8 @@
         }
 
         function generateFallbackData() {
-            // Mock data used ONLY if Google fails
-            allVenues.length = 0;
-            const sportsTypes = ["Football", "Badminton", "Cricket", "Tennis", "Swimming", "Basketball"];
-            for (let i = 0; i < 20; i++) {
-                const sport = sportsTypes[Math.floor(Math.random() * sportsTypes.length)];
-                allVenues.push({
-                    id: i,
-                    name: `Apex ${sport} ${Math.random() > 0.5 ? 'Turf' : 'Arena'}`,
-                    sport: sport,
-                    area: "Prime Sector",
-                    rating: "4.8",
-                    reviews: "150",
-                    dist: (Math.random() * 8).toFixed(1),
-                    imgUrl: `https://loremflickr.com/600/400/${sport.toLowerCase()}/all?lock=${i}`
-                });
-            }
-            currentVenues = [...allVenues];
+            // Mock data disabled to only show added venues
+            // currentVenues = [...allVenues];
         }
 
         function renderBatch() {
@@ -942,7 +1007,7 @@
                 }).toString();
 
                 htmlFragment += `
-                    <div class="venue-card" data-id="${venue.id}" style="animation-delay: ${delay}s" onclick="window.location.href='3.php?${queryParams}'">
+                    <div class="venue-card" data-id="${venue.id}" style="animation-delay: ${delay}s" onclick="window.location.href='3.php?${queryParams}&type=${venue.type}'">
                         <div class="card-image">
                             <img src="${venue.imgUrl}" loading="lazy" alt="${venue.sport}">
                             <div class="dist-badge">

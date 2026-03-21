@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'db_connect.php';
+require_once 'razorpay_config.php';
 
 // Access Control
 $adminEmails = ["elisreji2028@mca.ajce.in", "junaelsamathew2028@mca.ajce.in"];
@@ -176,6 +177,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Handle Process Refund
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'process_refund') {
+    $disputeId = $_POST['dispute_id'] ?? '';
+    $isAjax = isset($_POST['ajax']) && $_POST['ajax'] == '1';
+    $disputesFile = 'disputes.json';
+    
+    if (file_exists($disputesFile)) {
+        $disputes = json_decode(file_get_contents($disputesFile), true);
+        $found = false;
+        $status = 'error';
+        $errorMessage = 'Unknown error';
+        $refundId = null;
+        
+        foreach ($disputes as &$d) {
+            if ($d['id'] === $disputeId && $d['status'] === 'Pending') {
+                $paymentId = $d['payment_id'] ?? '';
+                
+                try {
+                    if (defined('RAZORPAY_TEST_SIMULATION') && RAZORPAY_TEST_SIMULATION) {
+                        // Simulate Refund
+                        $refundId = 'rfnd_sim_' . substr(md5(time()), 0, 8);
+                        sleep(2); // Simulate network delay for better UI experience
+                        $d['status'] = 'Refunded (Simulated)';
+                        $d['refund_id'] = $refundId;
+                        $successMessage = "Refund SIMULATED successfully for Ticket #$disputeId. Refund ID: $refundId";
+                        $status = 'success';
+                    } else {
+                        // Actual Razorpay Refund
+                        $api = getRazorpayApi();
+                        $refund = $api->refund->create([
+                            'payment_id' => $paymentId
+                        ]);
+                        
+                        $d['status'] = 'Refunded (Razorpay)';
+                        $d['refund_id'] = $refund['id'];
+                        $refundId = $refund['id'];
+                        $successMessage = "Refund processed successfully via Razorpay for Ticket #$disputeId. Refund ID: " . $refund['id'];
+                        $status = 'success';
+                    }
+                    $found = true;
+                    break;
+                } catch (Exception $e) {
+                    $errorMessage = "Razorpay Refund Error: " . $e->getMessage();
+                    break;
+                }
+            }
+        }
+        
+        if ($found && $status === 'success') {
+            file_put_contents($disputesFile, json_encode($disputes, JSON_PRETTY_PRINT));
+            if ($isAjax) {
+                echo json_encode(['success' => true, 'message' => $successMessage, 'refund_id' => $refundId]);
+                exit;
+            }
+        } else {
+            if ($isAjax) {
+                echo json_encode(['success' => false, 'message' => $errorMessage]);
+                exit;
+            }
+        }
+    }
+}
+
 // Handle Tournament/Event Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array($_POST['action'], ['approve_tournament', 'reject_tournament'])) {
     $tournamentId = $_POST['tournament_id'] ?? '';
@@ -314,6 +378,7 @@ $settings['blacklist_count'] = count($blockedUsers);
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
         :root {
             --bg-dark: #050505;
@@ -759,6 +824,134 @@ $settings['blacklist_count'] = count($blockedUsers);
         ::-webkit-scrollbar-thumb {
             background: #333;
             border-radius: 10px;
+        }
+
+        /* Razorpay Theme Modal Styles */
+        #razorpayRefundModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .rp-modal-card {
+            background: #ffffff;
+            width: 100%;
+            max-width: 400px;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            animation: rpModalIn 0.3s ease-out forwards;
+            color: #333;
+        }
+
+        @keyframes rpModalIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .rp-modal-header {
+            background: #232d3f;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: white;
+        }
+
+        .rp-logo {
+            height: 24px;
+        }
+
+        .rp-modal-body {
+            padding: 30px;
+            text-align: center;
+        }
+
+        .rp-status-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            position: relative;
+        }
+
+        /* success checkmark animation */
+        .rp-checkmark {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: block;
+            stroke-width: 2;
+            stroke: #39ff14;
+            stroke-miterlimit: 10;
+            box-shadow: inset 0px 0px 0px #39ff14;
+            animation: fill .4s ease-in-out .4s forwards, scale .3s ease-in-out .9s both;
+        }
+
+        .rp-checkmark__circle {
+            stroke-dasharray: 166;
+            stroke-dashoffset: 166;
+            stroke-width: 2;
+            stroke-miterlimit: 10;
+            stroke: #39ff14;
+            fill: none;
+            animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+        }
+
+        .rp-checkmark__check {
+            transform-origin: 50% 50%;
+            stroke-dasharray: 48;
+            stroke-dashoffset: 48;
+            animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+        }
+
+        @keyframes stroke { 100% { stroke-dashoffset: 0; } }
+        @keyframes scale { 0%, 100% { transform: none; } 50% { transform: scale3d(1.1, 1.1, 1); } }
+        @keyframes fill { 100% { box-shadow: inset 0px 0px 0px 40px rgba(57, 255, 20, 0.1); } }
+
+        .rp-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-top: 3px solid #2874f0;
+            border-radius: 50%;
+            animation: rpSpin 0.8s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes rpSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .rp-msg {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .rp-submsg {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .rp-btn {
+            background: #2874f0;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 2px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            width: 100%;
         }
     </style>
 </head>
@@ -1633,13 +1826,24 @@ $settings['blacklist_count'] = count($blockedUsers);
                             <tr>
                                 <td>#<?php echo $d['id']; ?></td>
                                 <td><?php echo $d['reported_by']; ?></td>
-                                <td><?php echo $d['category']; ?></td>
+                                <td>
+                                    <div style="font-weight: bold;"><?php echo $d['category']; ?></div>
+                                    <div style="font-size: 0.75rem; color: var(--text-gray); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($d['description']); ?>">
+                                        <?php echo htmlspecialchars($d['description']); ?>
+                                    </div>
+                                </td>
                                 <td><span class="badge"
                                         style="background: <?php echo $priorityColor; ?>; color: white;"><?php echo $d['priority']; ?></span>
                                 </td>
                                 <td><span class="badge badge-pending"><?php echo $d['status']; ?></span></td>
-                                <td><button class="action-btn"
-                                        onclick="resolveDispute('<?php echo $d['id']; ?>')">Resolve</button></td>
+                                <td style="display: flex; gap: 8px;">
+                                    <button class="action-btn" onclick="alert('Details:\n\n' + <?php echo json_encode($d['description']); ?>)">View</button>
+                                    <?php if ($d['category'] === 'Refund Request'): ?>
+                                        <button class="action-btn" style="background: var(--primary-green); color: black;" onclick="processAdminRefund('<?php echo $d['id']; ?>')">Process Refund</button>
+                                    <?php else: ?>
+                                        <button class="action-btn" onclick="resolveDispute('<?php echo $d['id']; ?>')">Resolve</button>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                         <?php if (!$hasPending): ?>
@@ -1656,7 +1860,7 @@ $settings['blacklist_count'] = count($blockedUsers);
 
     <!-- Hidden Dispute Action Form -->
     <form id="disputeForm" method="POST" style="display:none;">
-        <input type="hidden" name="action" value="resolve_dispute">
+        <input type="hidden" name="action" id="dispute_action_input" value="resolve_dispute">
         <input type="hidden" name="dispute_id" id="resolve_dispute_id">
     </form>
 
@@ -2023,6 +2227,53 @@ $settings['blacklist_count'] = count($blockedUsers);
             }
         }
 
+        function processAdminRefund(id) {
+            if (confirm("Are you sure you want to trigger a Razorpay REFUND for ticket #" + id + "?\n\nThis will communicate with Razorpay to reverse the transaction.")) {
+                // Show Razorpay Modal
+                const modal = document.getElementById('razorpayRefundModal');
+                modal.style.display = 'flex';
+                
+                // Reset modal states
+                document.getElementById('rp-loading-state').style.display = 'block';
+                document.getElementById('rp-success-state').style.display = 'none';
+                document.getElementById('rp-error-state').style.display = 'none';
+
+                // Prepare AJAX data
+                const formData = new FormData();
+                formData.append('action', 'process_refund');
+                formData.append('dispute_id', id);
+                formData.append('ajax', '1');
+
+                fetch('admin.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('rp-loading-state').style.display = 'none';
+                    if (data.success) {
+                        document.getElementById('rp-success-state').style.display = 'block';
+                        document.getElementById('rp-refund-id').innerText = "Refund ID: " + data.refund_id;
+                    } else {
+                        document.getElementById('rp-error-state').style.display = 'block';
+                        document.getElementById('rp-error-msg').innerText = "Reason: " + (data.message || "Unknown error");
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('rp-loading-state').style.display = 'none';
+                    document.getElementById('rp-error-state').style.display = 'block';
+                    document.getElementById('rp-error-msg').innerText = "Reason: Network or Server Error";
+                });
+            }
+        }
+
+        function closeRpModal() {
+            document.getElementById('razorpayRefundModal').style.display = 'none';
+            // Refresh to show updated status
+            location.reload();
+        }
+
         function manageTournament(action, id) {
             let confirmMsg = (action === 'approve_tournament') ? "Approve this tournament/event?" : "Reject this tournament/event?";
             if (confirm(confirmMsg)) {
@@ -2069,6 +2320,39 @@ $settings['blacklist_count'] = count($blockedUsers);
             <?php endif; ?>
         };
     </script>
+    <!-- Razorpay Refund Modal -->
+    <div id="razorpayRefundModal">
+        <div class="rp-modal-card">
+            <div class="rp-modal-header">
+                <i class="fa-solid fa-bolt-lightning" style="color: #39ff14; font-size: 1.2rem;"></i>
+                <span style="font-weight: 700; font-size: 1.1rem; letter-spacing: 0.5px;">Razorpay Refund</span>
+            </div>
+            <div class="rp-modal-body">
+                <div id="rp-loading-state">
+                    <div class="rp-spinner"></div>
+                    <div class="rp-msg">Processing Refund...</div>
+                    <div class="rp-submsg">Please do not close this window.</div>
+                </div>
+                <div id="rp-success-state" style="display: none;">
+                    <div class="rp-status-icon">
+                        <svg class="rp-checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+                            <circle class="rp-checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+                            <path class="rp-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+                        </svg>
+                    </div>
+                    <div class="rp-msg" style="color: #28a745;">Refund Successful!</div>
+                    <div id="rp-refund-id" class="rp-submsg">Refund ID: rfnd_xyz123</div>
+                    <button class="rp-btn" onclick="closeRpModal()">Close</button>
+                </div>
+                <div id="rp-error-state" style="display: none;">
+                    <i class="fa-solid fa-circle-xmark" style="color: #dc3545; font-size: 3.5rem; margin-bottom: 20px;"></i>
+                    <div class="rp-msg" style="color: #dc3545;">Refund Failed</div>
+                    <div id="rp-error-msg" class="rp-submsg">Reason: Invalid payment ID</div>
+                    <button class="rp-btn" style="background: #666;" onclick="closeRpModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

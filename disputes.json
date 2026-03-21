@@ -4,7 +4,9 @@
         "reported_by": "Alan Thomas",
         "category": "Refund Request",
         "priority": "High",
-        "status": "Pending"
+        "status": "Pending",
+        "payment_id": "pay_STLJLNUcs9wWLt",
+        "description": "Refund requested for: Gold Plan (Amount: ₹1,500.00)"
     },
     {
         "id": "T-90112",

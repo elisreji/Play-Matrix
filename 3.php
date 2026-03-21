@@ -1,3 +1,17 @@
+<?php
+session_start();
+require_once 'db_connect.php';
+
+$trainerVenue = null;
+$type = $_GET['type'] ?? '';
+$id = $_GET['id'] ?? '';
+
+if ($type === 'trainer' && !empty($id)) {
+    $stmt = $pdo->prepare("SELECT * FROM TRAINER_VENUES WHERE id = ?");
+    $stmt->execute([$id]);
+    $trainerVenue = $stmt->fetch(PDO::FETCH_ASSOC);
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -455,11 +469,18 @@
         const defaultRating = urlParams.get('rating') || "4.5";
         const defaultReviews = urlParams.get('reviews') || "128";
 
+        const trainerData = <?php echo json_encode($trainerVenue); ?>;
+
         let currentSlide = 0;
         let photoshoot = [];
 
         // Initialize Google Places Service
         function initDetails() {
+            if (trainerData) {
+                updateTrainerUI(trainerData);
+                return;
+            }
+
             // Initial UI update from URL params
             document.getElementById('venueName').textContent = defaultName;
             document.getElementById('venueArea').textContent = `${defaultArea} • ${defaultSport} Hub`;
@@ -483,6 +504,31 @@
                     loadMockDetails();
                 }
             });
+        }
+
+        function updateTrainerUI(venue) {
+            document.getElementById('venueName').textContent = venue.venue_name;
+            document.getElementById('venueArea').textContent = `${venue.location} • ${venue.sports_available}`;
+            document.getElementById('venueAddress').textContent = venue.location;
+            document.getElementById('venueRating').textContent = "4.8";
+            document.getElementById('venueReviews').textContent = "24";
+            document.title = `${venue.venue_name} - PlayMatrix`;
+
+            // Timing
+            if (venue.timing) {
+                document.querySelector('.action-card:nth-of-type(2) .info-value').textContent = venue.timing;
+            }
+
+            // Photos
+            photoshoot = [];
+            if (venue.pic1) photoshoot.push(venue.pic1);
+            if (venue.pic2) photoshoot.push(venue.pic2);
+            if (venue.pic3) photoshoot.push(venue.pic3);
+
+            if (photoshoot.length === 0) {
+                photoshoot = generateFallbackPhotos();
+            }
+            renderGallery();
         }
 
         function updateRealUI(place) {

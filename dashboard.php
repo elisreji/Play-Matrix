@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'razorpay_config.php';
+require_once 'db_connect.php';
 if (!isset($_SESSION['user'])) {
     header("Location: login.php");
     exit;
@@ -16,6 +16,33 @@ foreach ($users as $u) {
     }
 }
 $userName = $currentUser['name'] ?? 'Player One';
+
+// Fetch more user details from MySQL
+$userPhone = '';
+$userEmailNotif = 1;
+$userSmsNotif = 0;
+
+if ($pdo) {
+    $stmt = $pdo->prepare("SELECT * FROM USERS WHERE email = ?");
+    $stmt->execute([$email]);
+    $dbUser = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($dbUser) {
+        $userPhone = $dbUser['phone'] ?? '';
+        $userEmailNotif = isset($dbUser['email_notif']) ? (int)$dbUser['email_notif'] : 1;
+        $userSmsNotif = isset($dbUser['sms_notif']) ? (int)$dbUser['sms_notif'] : 0;
+    }
+}
+
+// Redirect based on role if necessary
+if ($currentUser && isset($currentUser['role'])) {
+    if ($currentUser['role'] === 'Admin') {
+        header("Location: admin.php");
+        exit;
+    } elseif ($currentUser['role'] === 'Trainer') {
+        header("Location: trainer_dashboard.php");
+        exit;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -24,14 +51,12 @@ $userName = $currentUser['name'] ?? 'Player One';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - PlayMatrix</title>
-    <!-- Fonts -
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Razorpay SDK -->
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
     <style>
         :root {
@@ -64,7 +89,7 @@ $userName = $currentUser['name'] ?? 'Player One';
         .sidebar {
             width: var(--sidebar-width);
             background: #0a0a0a;
-            border-right: 1px solid var(--glass-border);
+            border-right: 1px solid rgba(57, 255, 20, 0.2);
             height: 100vh;
             position: fixed;
             left: 0;
@@ -73,6 +98,25 @@ $userName = $currentUser['name'] ?? 'Player One';
             flex-direction: column;
             padding: 2rem 1.5rem;
             z-index: 1000;
+            overflow-y: auto;
+        }
+
+        /* Custom Scrollbar for Sidebar */
+        .sidebar::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(57, 255, 20, 0.2);
+            border-radius: 10px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-green);
         }
 
         .brand {
@@ -302,6 +346,11 @@ $userName = $currentUser['name'] ?? 'Player One';
         .status-pending {
             background: rgba(255, 184, 0, 0.1);
             color: #ffb800;
+        }
+
+        .status-failed {
+            background: rgba(255, 68, 68, 0.1);
+            color: #ff4444;
         }
 
         @media (max-width: 992px) {
@@ -570,9 +619,21 @@ $userName = $currentUser['name'] ?? 'Player One';
                 </a>
             </li>
             <li class="nav-item">
+                <a href="#" class="nav-link" onclick="showSection('tournaments'); return false;">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Tournaments</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="#" class="nav-link" onclick="showSection('coaching'); return false;">
                     <i class="fa-solid fa-user-graduate"></i>
                     <span>Coaching</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#" class="nav-link" onclick="showSection('payments'); return false;">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Payment History</span>
                 </a>
             </li>
             <li class="nav-item">
@@ -581,20 +642,34 @@ $userName = $currentUser['name'] ?? 'Player One';
                     <span>Book Venue</span>
                 </a>
             </li>
+
             <li class="nav-item">
                 <a href="#" class="nav-link" onclick="showSection('mygames'); return false;">
                     <i class="fa-solid fa-gamepad"></i>
                     <span>My Games</span>
                 </a>
             </li>
+
             <li class="nav-item">
-                <a href="#" class="nav-link">
-                    <i class="fa-solid fa-award"></i>
-                    <span>Achievements</span>
+                <a href="#" class="nav-link" onclick="showSection('membership'); return false;">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span>Membership</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a href="#" class="nav-link">
+                <a href="#" class="nav-link" onclick="showSection('refunds'); return false;">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span>Refund Request</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#" class="nav-link" onclick="showSection('requests'); return false;">
+                    <i class="fa-solid fa-envelope-open-text"></i>
+                    <span>Help & Requests</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#" class="nav-link" onclick="showSection('settings'); return false;">
                     <i class="fa-solid fa-gears"></i>
                     <span>Settings</span>
                 </a>
@@ -632,30 +707,25 @@ $userName = $currentUser['name'] ?? 'Player One';
                     <div class="stat-value">2,450</div>
                     <div class="stat-label">Matrix Points</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon"><i class="fa-solid fa-trophy"></i></div>
-                    <div class="stat-value">12</div>
-                    <div class="stat-label">Trophies Won</div>
+
+                <!-- Restore Wallet Card -->
+                <div class="stat-card" style="background: linear-gradient(145deg, #0c0c0c, #1a1a1a); border: 1px solid var(--primary-green); box-shadow: 0 0 15px rgba(57, 255, 20, 0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div class="stat-icon" style="margin-bottom: 0.5rem;"><i class="fa-solid fa-wallet"></i></div>
+                            <div class="stat-value" id="walletBalanceOverview">₹ <?php echo number_format($currentUser['wallet_balance'] ?? 0, 2); ?></div>
+                            <div class="stat-label">Matrix Wallet</div>
+                        </div>
+                    </div>
                 </div>
+
                 <div class="stat-card">
                     <div class="stat-icon"><i class="fa-solid fa-check-double"></i></div>
                     <div class="stat-value">04</div>
                     <div class="stat-label">Active Bookings</div>
                 </div>
-                <!-- Wallet Wallet Card -->
-                <div class="stat-card" style="background: linear-gradient(145deg, #0c0c0c, #1a1a1a); border: 1px solid var(--primary-green); box-shadow: 0 0 15px rgba(57, 255, 20, 0.1);">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <div>
-                            <div class="stat-icon" style="margin-bottom: 0.5rem;"><i class="fa-solid fa-wallet"></i></div>
-                            <div class="stat-value" id="walletBalance">₹ <?php echo number_format($currentUser['wallet_balance'] ?? 0, 2); ?></div>
-                            <div class="stat-label">Matrix Wallet</div>
-                        </div>
-                        <button onclick="openAddFundsModal()" style="background: var(--primary-green); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.8rem;">
-                            <i class="fa-solid fa-plus"></i> Add Funds
-                        </button>
-                    </div>
-                </div>
             </section>
+
 
             <section class="activity-section">
                 <div class="section-header">
@@ -699,6 +769,78 @@ $userName = $currentUser['name'] ?? 'Player One';
                     </ul>
                 </div>
             </section>
+        </div>
+
+        <!-- PAYMENT HISTORY SECTION -->
+        <div id="payments" class="dashboard-section" style="display: none;">
+            <div class="section-header">
+                <h3>My Payment History</h3>
+                <p style="color: var(--text-gray); font-size: 0.9rem;">View all your past transactions and payments.</p>
+            </div>
+            <div class="section-card" style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--glass-border); color: var(--text-gray);">
+                            <th style="padding: 12px; white-space: nowrap;">Date</th>
+                            <th style="padding: 12px;">Description</th>
+                            <th style="padding: 12px;">Method</th>
+                            <th style="padding: 12px;">Amount</th>
+                            <th style="padding: 12px;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        require_once 'db_connect.php';
+                        if ($pdo) {
+                            try {
+                                $stmt = $pdo->prepare("SELECT p.*, b.booking_id as bid FROM PAYMENTS p 
+                                                    INNER JOIN USERS u ON p.user_id = u.user_id 
+                                                    LEFT JOIN BOOKINGS b ON p.booking_id = b.booking_id 
+                                                    WHERE u.email = ? ORDER BY p.paid_at DESC");
+                                $stmt->execute([$email]);
+                                $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                                if (count($payments) > 0) {
+                                    foreach ($payments as $pay) {
+                                        $date = date('M d, Y • h:i A', strtotime($pay['paid_at']));
+                                        $amount = number_format($pay['amount'], 2);
+                                        $method = htmlspecialchars($pay['payment_method'] ?? 'Card');
+                                        
+                                        $statusClass = 'status-pending';
+                                        if ($pay['payment_status'] === 'Success') $statusClass = 'status-completed';
+                                        if ($pay['payment_status'] === 'Failed') $statusClass = 'status-failed';
+                                        if ($pay['payment_status'] === 'Refunded') $statusClass = 'status-pending';
+                                        
+                                        $desc = "Payment Processing";
+                                        if (!empty($pay['booking_id'])) {
+                                            $desc = "Venue Booking #" . $pay['booking_id'];
+                                        } elseif ((float)$pay['amount'] == 8100 || (float)$pay['amount'] == 9000 || (float)$pay['amount'] == 14400 || (float)$pay['amount'] == 1500) {
+                                            $desc = "Subscription Plan Purchase";
+                                        } else {
+                                            $desc = "Wallet Top-up / Game Join";
+                                        }
+
+                                        echo "<tr style='border-bottom: 1px solid rgba(255,255,255,0.05); transition: 0.2s;'>
+                                                <td style='padding: 15px 12px; font-size: 0.9rem; color: var(--text-gray); white-space: nowrap;'>{$date}</td>
+                                                <td style='padding: 15px 12px; font-weight: bold;'>{$desc}</td>
+                                                <td style='padding: 15px 12px; font-size: 0.9rem;'><i class='fa-solid fa-credit-card' style='margin-right:8px; color: var(--text-gray);'></i> {$method}</td>
+                                                <td style='padding: 15px 12px; font-weight: 800; color: var(--primary-green);'>₹{$amount}</td>
+                                                <td style='padding: 15px 12px;'><span class='activity-status {$statusClass}'>{$pay['payment_status']}</span></td>
+                                              </tr>";
+                                    }
+                                } else {
+                                    echo "<tr><td colspan='5' style='text-align: center; padding: 3rem; color: var(--text-gray);'><i class='fa-solid fa-receipt' style='font-size: 2rem; margin-bottom: 10px; opacity: 0.5; display: block;'></i>No payment history found yet.</td></tr>";
+                                }
+                            } catch (Exception $e) {
+                                echo "<tr><td colspan='5' style='text-align: center; padding: 2rem; color: #ff4444;'>Error loading payments. Details: " . $e->getMessage() . "</td></tr>";
+                            }
+                        } else {
+                            echo "<tr><td colspan='5' style='text-align: center; padding: 2rem; color: #ff4444;'>Database connection failed.</td></tr>";
+                        }
+                        ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- PLAY SECTION -->
@@ -1068,11 +1210,389 @@ $userName = $currentUser['name'] ?? 'Player One';
             </div>
         </div>
 
+        <!-- NEW SECTIONS ADDED BELOW -->
+
+        <!-- TOURNAMENTS SECTION -->
+        <div id="tournaments" class="dashboard-section" style="display: none;">
+            <div class="section-header">
+                <h3>Live Tournaments & Events</h3>
+                <p style="color: var(--text-gray); font-size: 0.9rem;">Join official competition and showcase your skill.</p>
+            </div>
+            <div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));">
+                <?php
+                $tourneyData = json_decode(file_get_contents('tournaments.json'), true);
+                if ($tourneyData) {
+                    foreach ($tourneyData as $t) {
+                        $badge = $t['type'] === 'Tournament' ? '🏆' : '🔥';
+                        echo "
+                        <div class='stat-card' style='border-left: 4px solid var(--primary-green);'>
+                            <div style='display: flex; justify-content: space-between; align-items: start;'>
+                                <div class='stat-icon'>$badge</div>
+                                <span style='font-size: 0.75rem; background: rgba(57,255,20,0.1); color: var(--primary-green); padding: 4px 8px; border-radius: 4px; font-weight: bold;'>{$t['status']}</span>
+                            </div>
+                            <h4 style='font-size: 1.2rem; margin-bottom: 5px;'>{$t['name']}</h4>
+                            <p style='color: var(--text-gray); font-size: 0.85rem; margin-bottom: 15px;'>Organized by {$t['organizer']}</p>
+                            <div style='display: grid; gap: 8px; font-size: 0.9rem; margin-bottom: 15px;'>
+                                <div style='display: flex; align-items: center; gap: 8px;'><i class='fa-solid fa-location-dot' style='width: 15px; color: var(--primary-green); opacity: 0.7;'></i> {$t['venue']}</div>
+                                <div style='display: flex; align-items: center; gap: 8px;'><i class='fa-regular fa-calendar' style='width: 15px; color: var(--primary-green); opacity: 0.7;'></i> {$t['date']}</div>
+                                <div style='display: flex; align-items: center; gap: 8px;'><i class='fa-solid fa-money-bill' style='width: 15px; color: var(--primary-green); opacity: 0.7;'></i> {$t['entry_fee']}</div>
+                            </div>
+                            <button onclick='alert(\"Tournaments registrations will open soon!\")' style='width: 100%; padding: 12px; background: transparent; border: 1px solid var(--primary-green); color: var(--primary-green); border-radius: 8px; font-weight: 700; cursor: pointer; transition: 0.3s;'>Register Now</button>
+                        </div>";
+                    }
+                }
+                ?>
+            </div>
+        </div>
+
+        <!-- ACHIEVEMENTS SECTION -->
+        <div id="achievements" class="dashboard-section" style="display: none;">
+            <div class="section-header">
+                <h3>My Trophies & Achievements</h3>
+                <p style="color: var(--text-gray); font-size: 0.9rem;">Your journey through the matrix.</p>
+            </div>
+            <div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+                <div class="stat-card" style="text-align: center; opacity: 1; border-color: var(--primary-green);">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">🥊</div>
+                    <h4 style="color: var(--primary-green); margin-bottom: 5px;">Novice Striker</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-gray);">Completed 5 Football Matches</p>
+                    <div style="width: 100%; height: 6px; background: rgba(57,255,20,0.1); border-radius: 3px; margin-top: 15px; position:relative; overflow:hidden;">
+                        <div style="position:absolute; left: 0; top: 0; bottom: 0; width: 100%; background: var(--primary-green);"></div>
+                    </div>
+                    <p style="font-size: 0.7rem; color: var(--primary-green); margin-top: 5px;">UNLOCKED</p>
+                </div>
+                <div class="stat-card" style="text-align: center; opacity: 0.5;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">🎾</div>
+                    <h4 style="margin-bottom: 5px;">Net Master</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-gray);">Win 3 Tennis Sessions</p>
+                    <div style="width: 100%; height: 6px; background: rgba(57,255,20,0.1); border-radius: 3px; margin-top: 15px; position:relative; overflow:hidden;">
+                        <div style="position:absolute; left: 0; top: 0; bottom: 0; width: 30%; background: var(--primary-green);"></div>
+                    </div>
+                    <p style="font-size: 0.7rem; color: var(--text-gray); margin-top: 5px;">30% COMPLETE</p>
+                </div>
+                <div class="stat-card" style="text-align: center; opacity: 1; border-color: #ffaa00;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">👟</div>
+                    <h4 style="color: #ffaa00; margin-bottom: 5px;">Early Bird</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-gray);">Joined a 6:00 AM Session</p>
+                    <div style="width: 100%; height: 6px; background: rgba(255,170,0,0.1); border-radius: 3px; margin-top: 15px; position:relative; overflow:hidden;">
+                        <div style="position:absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #ffaa00;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MEMBERSHIP SECTION -->
+        <div id="membership" class="dashboard-section" style="display: none;">
+            <div class="section-header">
+                <h3>My Membership</h3>
+            </div>
+            <div class="card" style="background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);">
+                <?php
+                $userPlan = $currentUser['plan'] ?? 'Free';
+                $planDetails = null;
+                $plans = json_decode(file_get_contents('plans.json'), true);
+                foreach ($plans as $p) {
+                    if ($p['id'] === $userPlan) { $planDetails = $p; break; }
+                }
+                ?>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h4 style="font-size: 0.9rem; color: var(--text-gray); text-transform: uppercase; letter-spacing: 2px;">Current Status</h4>
+                        <h2 style="font-size: 2.2rem; color: white; display: flex; align-items: center; gap: 15px;">
+                            <?php echo $planDetails['badge'] ?? '🟢'; ?> <?php echo $planDetails['name'] ?? 'FREE PLAN'; ?>
+                        </h2>
+                    </div>
+                    <?php if ($userPlan !== 'Platinum'): ?>
+                        <button onclick="openUpgradeModal()" style="padding: 12px 25px; background: var(--primary-green); color: black; border: none; border-radius: 12px; font-weight: 800; cursor: pointer; text-transform: uppercase;">Upgrade Plan</button>
+                    <?php endif; ?>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                    <div style="padding: 1.5rem; background: rgba(255,255,255,0.03); border-radius: 16px; border: 1px solid var(--glass-border);">
+                        <i class="fa-solid fa-gem" style="color: var(--primary-green); font-size: 1.2rem; margin-bottom: 10px;"></i>
+                        <h5 style="color: white; margin-bottom: 5px;">Active Benefits</h5>
+                        <ul style="list-style: none; font-size: 0.85rem; color: var(--text-gray); line-height: 1.6;">
+                            <?php if ($planDetails): foreach ($planDetails['features'] as $f): ?>
+                                <li><i class="fa-solid fa-check" style="color: var(--primary-green); margin-right: 8px;"></i> <?php echo $f; ?></li>
+                            <?php endforeach; endif; ?>
+                        </ul>
+                    </div>
+                    <div style="padding: 1.5rem; background: rgba(255,255,255,0.03); border-radius: 16px; border: 1px solid var(--glass-border);">
+                        <i class="fa-solid fa-wallet" style="color: var(--primary-green); font-size: 1.2rem; margin-bottom: 10px;"></i>
+                        <h5 style="color: white; margin-bottom: 5px;">Matrix Wallet</h5>
+                        <p style="font-size: 1.8rem; color: white; font-weight: 800;" id="walletBalanceMembership">₹ <?php echo number_format($currentUser['wallet_balance'] ?? 0, 2); ?></p>
+                        <p style="font-size: 0.75rem; color: var(--text-gray);">Points: 2,450</p>
+                        <button style="width: 100%; margin-top: 15px; padding: 10px; background: transparent; border: 1px solid var(--glass-border); color: white; border-radius: 8px; cursor: pointer; font-size: 0.8rem;">Add Funds</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HELP & REQUESTS SECTION -->
+        <div id="requests" class="dashboard-section" style="display: none;">
+            <div class="section-header">
+                <h3>Help & Support</h3>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card" style="cursor: pointer;" onclick="alert('Help center is under maintenance.')">
+                    <div class="stat-icon"><i class="fa-solid fa-life-ring"></i></div>
+                    <h4 style="margin-bottom: 5px;">Support Center</h4>
+                    <p style="color: var(--text-gray); font-size: 0.85rem;">Browse FAQs and Guides</p>
+                </div>
+                <div class="stat-card" style="cursor: pointer;" onclick="alert('Please contact us at support@playmatrix.com for refund requests.')">
+                    <div class="stat-icon"><i class="fa-solid fa-rotate-left"></i></div>
+                    <h4 style="margin-bottom: 5px;">Request Refund</h4>
+                    <p style="color: var(--text-gray); font-size: 0.85rem;">For cancelled bookings</p>
+                </div>
+                <div class="stat-card" style="cursor: pointer;" onclick="alert('Review history will be available shortly.')">
+                    <div class="stat-icon"><i class="fa-solid fa-star"></i></div>
+                    <h4 style="margin-bottom: 5px;">My Feedback</h4>
+                    <p style="color: var(--text-gray); font-size: 0.85rem;">Your reviews and ratings</p>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 2rem; padding: 1.5rem; background: #121212; border-radius: 16px; border: 1px solid var(--glass-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
+                    <div class="stat-icon" style="background: rgba(57,255,20,0.1); border-radius: 12px; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa-solid fa-envelope" style="font-size: 1.3rem;"></i>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 3px;">Submit a Complaint</h4>
+                        <p style="color: var(--text-gray); font-size: 0.85rem;">Reach out to our support team via email</p>
+                    </div>
+                </div>
+                <div style="background: rgba(57,255,20,0.05); border: 1px solid rgba(57,255,20,0.15); border-radius: 12px; padding: 1.2rem;">
+                    <p style="color: var(--text-gray); font-size: 0.85rem; margin-bottom: 0.8rem;">For any complaints, issues, or concerns please contact us at:</p>
+                    <a href="mailto:support@playmatrix.com" style="display: flex; align-items: center; gap: 10px; color: var(--primary-green); font-weight: 700; font-size: 1rem; text-decoration: none;">
+                        <i class="fa-solid fa-envelope-open-text"></i> support@playmatrix.com
+                    </a>
+                    <p style="color: var(--text-gray); font-size: 0.8rem; margin-top: 0.8rem;">We typically respond within <strong style="color: white;">24–48 hours</strong>. Please include your registered email and a brief description of the issue.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SETTINGS SECTION -->
+        <div id="settings" class="dashboard-section" style="display: none;">
+            <div class="section-header">
+                <h3>Account Settings</h3>
+                <button class="btn-primary" id="saveProfileBtn" onclick="saveProfile()">Save Profile</button>
+            </div>
+            <div class="card">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
+                    <div>
+                        <label>Display Name</label>
+                        <input type="text" id="settingsName" value="<?php echo htmlspecialchars($userName); ?>" placeholder="Enter Name">
+                        
+                        <label style="margin-top: 15px;">Email Address</label>
+                        <input type="email" value="<?php echo htmlspecialchars($email); ?>" readonly style="opacity: 0.6; cursor: not-allowed;">
+                        
+                        <label style="margin-top: 15px;">Phone Number</label>
+                        <input type="tel" id="settingsPhone" value="<?php echo htmlspecialchars($userPhone); ?>" placeholder="+91 XXXX XXXX">
+                    </div>
+                    <div>
+                        <h5 style="margin-bottom: 1rem; color: var(--text-gray);">Preferences</h5>
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Email Notifications</span>
+                                <input type="checkbox" id="settingsEmailNotif" <?php echo $userEmailNotif ? 'checked' : ''; ?> style="width: 20px; height: 20px; accent-color: var(--primary-green);">
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>SMS Alerts</span>
+                                <input type="checkbox" id="settingsSmsNotif" <?php echo $userSmsNotif ? 'checked' : ''; ?> style="width: 20px; height: 20px; accent-color: var(--primary-green);">
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Dark Mode</span>
+                                <input type="checkbox" checked disabled style="width: 20px; height: 20px; accent-color: var(--primary-green);">
+                            </div>
+                        </div>
+                        <button onclick="openPasswordModal()" style="width: 100%; margin-top: 2rem; padding: 12px; background: rgba(57, 255, 20, 0.1); color: var(--primary-green); border: 1px solid var(--primary-green); border-radius: 8px; cursor: pointer; font-weight: 600;">Change Password</button>
+                    </div>
+                </div>
+            </div>
+            <div id="settingsMsg" style="margin-top: 15px; text-align: center; font-size: 0.9rem;"></div>
+        </div>
+
+        <!-- PASSWORD MODAL -->
+        <div id="passwordModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 3000; align-items: center; justify-content: center; padding: 20px;">
+            <div class="section-card" style="width: 100%; max-width: 400px; position: relative;">
+                <button onclick="closePasswordModal()" style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.2rem;">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <div style="width: 60px; height: 60px; background: rgba(57, 255, 20, 0.1); color: var(--primary-green); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin: 0 auto 10px;">
+                        <i class="fa-solid fa-lock"></i>
+                    </div>
+                    <h3 style="margin: 0; font-size: 1.4rem;">Change Password</h3>
+                </div>
+                <div style="display: grid; gap: 1rem;">
+                    <div>
+                        <label style="display: block; color: var(--text-gray); margin-bottom: 5px; font-size: 0.85rem;">Current Password</label>
+                        <input type="password" id="currPass" placeholder="••••••••" style="width: 100%; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; padding: 12px; border-radius: 8px;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: var(--text-gray); margin-bottom: 5px; font-size: 0.85rem;">New Password</label>
+                        <input type="password" id="newPass" placeholder="At least 6 chars" style="width: 100%; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; padding: 12px; border-radius: 8px;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: var(--text-gray); margin-bottom: 5px; font-size: 0.85rem;">Confirm New Password</label>
+                        <input type="password" id="confPass" placeholder="Repeat new password" style="width: 100%; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; padding: 12px; border-radius: 8px;">
+                    </div>
+                    <button onclick="changePassword()" style="width: 100%; margin-top: 1rem; padding: 14px; background: var(--primary-green); color: black; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">Update Password</button>
+                    <div id="passMsg" style="text-align: center; font-size: 0.9rem;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- REFUNDS SECTION -->
+        <div id="refunds" class="dashboard-section" style="display: none;">
+            <div class="section-header">
+                <h3>Request a Refund</h3>
+                <p style="color: var(--text-gray); font-size: 0.9rem;">Select a successful payment to request a refund. Our team will review it within 24-48 hours.</p>
+            </div>
+            <div class="section-card" style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--glass-border); color: var(--text-gray);">
+                            <th style="padding: 12px; white-space: nowrap;">Date</th>
+                            <th style="padding: 12px;">Description</th>
+                            <th style="padding: 12px;">Method</th>
+                            <th style="padding: 12px;">Amount</th>
+                            <th style="padding: 12px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        if ($pdo) {
+                            try {
+                                $stmt = $pdo->prepare("SELECT p.*, b.booking_id as bid FROM PAYMENTS p 
+                                                    INNER JOIN USERS u ON p.user_id = u.user_id 
+                                                    LEFT JOIN BOOKINGS b ON p.booking_id = b.booking_id 
+                                                    WHERE u.email = ? AND p.payment_status = 'Success' ORDER BY p.paid_at DESC");
+                                $stmt->execute([$email]);
+                                $refund_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                                if (count($refund_payments) > 0) {
+                                    foreach ($refund_payments as $pay) {
+                                        $date = date('M d, Y', strtotime($pay['paid_at']));
+                                        $amount = number_format($pay['amount'], 2);
+                                        $method = htmlspecialchars($pay['payment_method'] ?? 'Card');
+                                        
+                                        $desc = "Payment Processing";
+                                        if (!empty($pay['booking_id'])) {
+                                            $desc = "Venue Booking #" . $pay['booking_id'];
+                                        } elseif ((float)$pay['amount'] == 8100 || (float)$pay['amount'] == 9000 || (float)$pay['amount'] == 14400 || (float)$pay['amount'] == 1500) {
+                                            $desc = "Subscription Plan Purchase";
+                                        } else {
+                                            $desc = "Wallet Top-up / Game Join";
+                                        }
+
+                                        echo "<tr style='border-bottom: 1px solid rgba(255,255,255,0.05); transition: 0.2s;'>
+                                                <td style='padding: 15px 12px; font-size: 0.9rem; color: var(--text-gray); white-space: nowrap;'>{$date}</td>
+                                                <td style='padding: 15px 12px; font-weight: bold;'>" . htmlspecialchars($desc) . "</td>
+                                                <td style='padding: 15px 12px; font-size: 0.9rem;'><i class='fa-solid fa-credit-card' style='margin-right:8px; color: var(--text-gray);'></i> {$method}</td>
+                                                <td style='padding: 15px 12px; font-weight: 800; color: var(--primary-green);'>₹{$amount}</td>
+                                                <td style='padding: 15px 12px;'>
+                                                    <button onclick='requestRefund(this)' 
+                                                        data-id='{$pay['payment_id']}' 
+                                                        data-desc='" . htmlspecialchars($desc, ENT_QUOTES) . "' 
+                                                        data-amount='{$pay['amount']}'
+                                                        class='btn-join' style='padding: 8px 16px; font-size: 0.8rem;'>
+                                                        Request Refund
+                                                    </button>
+                                                </td>
+                                              </tr>";
+                                    }
+                                } else {
+                                    echo "<tr><td colspan='5' style='text-align: center; padding: 3rem; color: var(--text-gray);'><i class='fa-solid fa-rotate-left' style='font-size: 2rem; margin-bottom: 10px; opacity: 0.5; display: block;'></i>No eligible payments found for refund.</td></tr>";
+                                }
+                            } catch (Exception $e) {
+                                echo "<tr><td colspan='5' style='text-align: center; padding: 2rem; color: #ff4444;'>Error loading payments.</td></tr>";
+                            }
+                        }
+                        ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- UPGRADE MODAL -->
+        <div id="upgradeModal"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+            <div class="section-card" style="width: 100%; max-width: 800px; position: relative; max-height: 90vh; overflow-y: auto;">
+                <button onclick="document.getElementById('upgradeModal').style.display='none'"
+                    style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;"><i
+                        class="fa-solid fa-times"></i></button>
+                <div class="section-header">
+                    <h3>Upgrade Your Membership</h3>
+                    <p style="color: var(--text-gray); font-size: 0.9rem;">Elevate your experience with premium benefits.</p>
+                </div>
+                
+                <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+                    <?php
+                    foreach ($plans as $p) {
+                        if ($p['id'] == 'Free') continue;
+                        $isCurrent = ($userPlan === $p['id']);
+                        $border = $isCurrent ? '2px solid var(--primary-green)' : '1px solid var(--glass-border)';
+                        $btnStyle = $isCurrent ? 'background: rgba(57,255,20,0.1); color: var(--primary-green); cursor: default;' : 'background: var(--primary-green); color: black;';
+                        $btnText = $isCurrent ? 'Current Plan' : 'Select Plan';
+                        
+                        echo "
+                        <div class='stat-card' style='border: $border; display: flex; flex-direction: column; height: 100%;'>
+                            <div style='font-size: 2rem; margin-bottom: 0.5rem;'>{$p['badge']}</div>
+                            <h4 style='font-size: 1.1rem; margin-bottom: 5px;'>{$p['name']}</h4>
+                            <div style='font-size: 1.5rem; font-weight: 800; color: white; margin-bottom: 1rem;'>₹ {$p['price']}</div>
+                            
+                            <ul style='list-style: none; font-size: 0.8rem; color: var(--text-gray); line-height: 1.4; flex-grow: 1; margin-bottom: 1.5rem;'>";
+                            foreach ($p['features'] as $f) {
+                                echo "<li style='margin-bottom: 5px; display: flex; align-items: start; gap: 8px;'><i class='fa-solid fa-circle-check' style='color: var(--primary-green); font-size: 0.7rem; margin-top: 3px;'></i> $f</li>";
+                            }
+                        echo "</ul>
+                            <button onclick=\"confirmUpgrade('{$p['id']}', '{$p['price']}', '{$p['name']}')\" " . ($isCurrent ? 'disabled' : '') . " style='width: 100%; margin-top: auto; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; $btnStyle'>$btnText</button>
+                        </div>";
+                    }
+                    ?>
+                </div>
+
+                <div id="upgradeMsg" style="margin-top: 20px; text-align: center; font-size: 0.9rem;"></div>
+            </div>
+        </div>
+
+
         <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
         <script>
             function openTrainerModal() {
                 document.getElementById('trainerModal').style.display = 'flex';
             }
+
+            function showSection(sectionId) {
+                // Hide all sections
+                document.querySelectorAll('.dashboard-section').forEach(sec => {
+                    sec.style.display = 'none';
+                });
+                
+                // Show requested section
+                const target = document.getElementById(sectionId);
+                if (target) {
+                    target.style.display = 'block';
+                }
+                
+                // Update nav links active state
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('onclick') && link.getAttribute('onclick').includes(`'${sectionId}'`)) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+
+            // Handle section from URL parameter
+            window.addEventListener('DOMContentLoaded', () => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const section = urlParams.get('show');
+                if (section) {
+                    showSection(section);
+                }
+            });
+
 
             function submitTrainerApplication(e) {
                 e.preventDefault();
@@ -1630,134 +2150,231 @@ $userName = $currentUser['name'] ?? 'Player One';
             }
             window.deleteGame = deleteGame;
 
-            function showSection(sectionId) {
-                // Hide all sections
-                document.querySelectorAll('.dashboard-section').forEach(sec => {
-                    sec.style.display = 'none';
-                });
-                // Show selected
-                const activeSec = document.getElementById(sectionId);
-                if (activeSec) activeSec.style.display = 'block';
-
-                // Specific renders
-                if (sectionId === 'play') renderGames();
-                if (sectionId === 'mygames') renderMyGames();
-
-                // Update Nav State
-                document.querySelectorAll('.nav-link').forEach(link => {
-                    link.classList.remove('active');
-                    if (link.getAttribute('onclick') && link.getAttribute('onclick').includes(sectionId)) {
-                        link.classList.add('active');
-                    }
-                });
-            }
-        </script>
-        <!-- ADD FUNDS MODAL -->
-        <div id="addFundsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
-            <div class="section-card" style="width: 100%; max-width: 400px; padding: 2rem; border-radius: 20px; text-align: center;">
-                <h3 style="margin-bottom: 1.5rem; color: var(--primary-green);">Top Up Your Wallet</h3>
-                <p style="color: var(--text-gray); margin-bottom: 1.5rem; font-size: 0.9rem;">Funds can be used for venue bookings and joining paid games.</p>
-                
-                <div style="margin-bottom: 1.5rem;">
-                    <label style="display: block; color: var(--text-white); margin-bottom: 10px; font-size: 0.9rem;">Amount (INR)</label>
-                    <div style="position: relative;">
-                        <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--text-gray);">₹</span>
-                        <input type="number" id="addFundsAmount" value="500" min="10" style="width: 100%; padding: 12px 12px 12px 35px; background: #0a0a0a; border: 1px solid var(--glass-border); color: white; border-radius: 10px; font-size: 1.2rem; font-weight: 700;">
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 2rem;">
-                    <button onclick="setAmount(200)" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border); padding: 8px; border-radius: 8px; cursor: pointer;">₹200</button>
-                    <button onclick="setAmount(500)" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border); padding: 8px; border-radius: 8px; cursor: pointer;">₹500</button>
-                    <button onclick="setAmount(1000)" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border); padding: 8px; border-radius: 8px; cursor: pointer;">₹1000</button>
-                </div>
-
-                <button onclick="startWalletPayment()" style="width: 100%; padding: 1rem; background: var(--primary-green); color: black; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.3s;">Proceed to Pay</button>
-                <button onclick="closeAddFundsModal()" style="width: 100%; padding: 1rem; background: transparent; color: var(--text-gray); border: none; border-radius: 12px; margin-top: 10px; cursor: pointer;">Cancel</button>
-            </div>
-        </div>
-
-        <script>
-            function openAddFundsModal() {
-                document.getElementById('addFundsModal').style.display = 'flex';
+            // --- UPGRADE PLAN LOGIC ---
+            function openUpgradeModal() {
+                const modal = document.getElementById('upgradeModal');
+                modal.style.display = 'flex';
+                document.getElementById('upgradeMsg').innerText = '';
             }
 
-            function closeAddFundsModal() {
-                document.getElementById('addFundsModal').style.display = 'none';
-            }
+            function confirmUpgrade(planId, price, planName) {
+                const msg = document.getElementById('upgradeMsg');
+                const amountPaise = Math.round(parseFloat(price) * 100);
 
-            function setAmount(amt) {
-                document.getElementById('addFundsAmount').value = amt;
-            }
-
-            function startWalletPayment() {
-                const amount = document.getElementById('addFundsAmount').value;
-                if (amount < 10) {
-                    alert("Please enter at least ₹10.");
+                if (amountPaise <= 0) {
+                    msg.style.color = '#ff4444';
+                    msg.innerText = 'Invalid plan amount.';
                     return;
                 }
 
-                const amountPaise = amount * 100;
-                const isSimulation = <?php echo RAZORPAY_TEST_SIMULATION ? 'true' : 'false'; ?>;
-                if (isSimulation) {
-                    console.log("RAZORPAY_TEST_SIMULATION Active: Bypassing modal.");
-                    const dummyResponse = { razorpay_payment_id: "pay_SIMULATED_" + Date.now() };
-                    fetch('update_wallet.php', {
+                var options = {
+                    key: 'rzp_test_SL8TAla7mMpzDe',
+                    amount: amountPaise,
+                    currency: 'INR',
+                    name: 'PlayMatrix',
+                    description: 'Upgrade to ' + planName,
+                    image: '',
+                    handler: async function(response) {
+                        msg.style.color = 'white';
+                        msg.innerText = 'Verifying payment...';
+
+                        try {
+                            const res = await fetch('process_plan_upgrade.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    planId: planId,
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    amount: parseFloat(price)
+                                })
+                            });
+                            const result = await res.json();
+                            if (result.success) {
+                                msg.style.color = 'var(--primary-green)';
+                                msg.innerText = 'Successfully upgraded to ' + planName + '! Refreshing...';
+                                setTimeout(() => location.reload(), 1500);
+                            } else {
+                                msg.style.color = '#ff4444';
+                                msg.innerText = result.message || 'Upgrade failed. Contact support.';
+                            }
+                        } catch (err) {
+                            msg.style.color = '#ff4444';
+                            msg.innerText = 'Network error. Please try again.';
+                        }
+                    },
+                    prefill: {
+                        email: '<?php echo addslashes($email); ?>'
+                    },
+                    theme: {
+                        color: '#39ff14'
+                    },
+                    modal: {
+                        ondismiss: function() {
+                            msg.style.color = 'var(--text-gray)';
+                            msg.innerText = 'Payment cancelled.';
+                        }
+                    }
+                };
+
+                var rzp = new Razorpay(options);
+                rzp.on('payment.failed', function(response) {
+                    msg.style.color = '#ff4444';
+                    msg.innerText = 'Payment failed: ' + response.error.description;
+                });
+                rzp.open();
+            }
+
+            // --- REFUND REQUEST LOGIC ---
+            async function requestRefund(btn) {
+                console.log("Refund button clicked!", btn);
+                
+                const paymentId = btn.getAttribute('data-id');
+                const description = btn.getAttribute('data-desc');
+                const amount = btn.getAttribute('data-amount');
+
+                console.log("Details:", { paymentId, description, amount });
+
+                if (!confirm(`Are you sure you want to request a refund for "${description}"?`)) {
+                    console.log("Refund cancelled by user.");
+                    return;
+                }
+
+                console.log("Proceeding with refund request...");
+                const originalText = btn.innerText;
+                btn.disabled = true;
+                btn.innerText = 'Processing...';
+
+                try {
+                    const response = await fetch('process_refund_request.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            amount: amount,
-                            payment_id: dummyResponse.razorpay_payment_id
+                            payment_id: paymentId,
+                            description: description,
+                            amount: amount
                         })
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.success) {
-                            document.getElementById('walletBalance').textContent = '₹ ' + parseFloat(data.new_balance).toFixed(2);
-                            alert("Wallet updated successfully (Simulated)!");
-                            closeAddFundsModal();
-                        } else {
-                            alert("Error updating wallet: " + data.message);
-                        }
                     });
+                    
+                    console.log("Fetch response received. Status:", response.status);
+                    const result = await response.json();
+                    console.log("Result JSON:", result);
+                    
+                    if (result.success) {
+                        alert(result.message);
+                        btn.innerText = 'Request Sent';
+                        btn.style.background = 'rgba(57, 255, 20, 0.1)';
+                        btn.style.color = 'var(--primary-green)';
+                        btn.style.borderColor = 'var(--primary-green)';
+                    } else {
+                        alert(result.message || 'Refund request failed. Please try again later.');
+                        btn.disabled = false;
+                        btn.innerText = originalText;
+                    }
+                } catch (error) {
+                    console.error('CRITICAL ERROR in requestRefund:', error);
+                    alert('A network error occurred: ' + error.message);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                }
+            }
+            window.requestRefund = requestRefund;
+
+            // --- SETTINGS LOGIC ---
+            async function saveProfile() {
+                const name = document.getElementById('settingsName').value;
+                const phone = document.getElementById('settingsPhone').value;
+                const emailNotif = document.getElementById('settingsEmailNotif').checked ? 1 : 0;
+                const smsNotif = document.getElementById('settingsSmsNotif').checked ? 1 : 0;
+                const msg = document.getElementById('settingsMsg');
+                const btn = document.getElementById('saveProfileBtn');
+
+                if (!name) {
+                    msg.style.color = '#ff4444';
+                    msg.innerText = 'Name is required.';
                     return;
                 }
 
-                const options = {
-                    "key": "<?php echo RAZORPAY_KEY_ID; ?>",
-                    "amount": amountPaise,
-                    "currency": "INR",
-                    "name": "PlayMatrix Wallet",
-                    "description": "Add funds to your Matrix Wallet",
-                    "handler": function (response) {
-                        fetch('update_wallet.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                amount: amount,
-                                payment_id: response.razorpay_payment_id
-                            })
-                        })
-                        .then(r => r.json())
-                        .then(data => {
-                            if (data.success) {
-                                document.getElementById('walletBalance').textContent = '₹ ' + parseFloat(data.new_balance).toFixed(2);
-                                alert("Wallet updated successfully!");
-                                closeAddFundsModal();
-                            } else {
-                                alert("Error updating wallet: " + data.message);
-                            }
-                        });
-                    },
-                    "prefill": {
-                        "email": "<?php echo $email; ?>"
-                    },
-                    "theme": {
-                        "color": "#39ff14"
+                btn.disabled = true;
+                btn.innerText = 'Saving...';
+                msg.style.color = 'var(--text-gray)';
+                msg.innerText = 'Updating profile...';
+
+                try {
+                    const response = await fetch('update_profile.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, phone, email_notif: emailNotif, sms_notif: smsNotif })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        msg.style.color = 'var(--primary-green)';
+                        msg.innerText = result.message;
+                        setTimeout(() => { msg.innerText = ''; }, 3000);
+                    } else {
+                        msg.style.color = '#ff4444';
+                        msg.innerText = result.message;
                     }
-                };
-                const rzp = new Razorpay(options);
-                rzp.open();
+                } catch (e) {
+                    msg.style.color = '#ff4444';
+                    msg.innerText = 'Error: ' + e.message;
+                } finally {
+                    btn.disabled = false;
+                    btn.innerText = 'Save Profile';
+                }
+            }
+
+            function openPasswordModal() {
+                document.getElementById('passwordModal').style.display = 'flex';
+                document.getElementById('passMsg').innerText = '';
+            }
+
+            function closePasswordModal() {
+                document.getElementById('passwordModal').style.display = 'none';
+                document.getElementById('currPass').value = '';
+                document.getElementById('newPass').value = '';
+                document.getElementById('confPass').value = '';
+            }
+
+            async function changePassword() {
+                const current = document.getElementById('currPass').value;
+                const newPass = document.getElementById('newPass').value;
+                const confirm = document.getElementById('confPass').value;
+                const msg = document.getElementById('passMsg');
+
+                if (!current || !newPass || !confirm) {
+                    msg.style.color = '#ff4444';
+                    msg.innerText = 'All fields are required.';
+                    return;
+                }
+
+                if (newPass !== confirm) {
+                    msg.style.color = '#ff4444';
+                    msg.innerText = 'New passwords do not match.';
+                    return;
+                }
+
+                msg.style.color = 'var(--text-gray)';
+                msg.innerText = 'Updating password...';
+
+                try {
+                    const response = await fetch('change_password.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ current_password: current, new_password: newPass })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        msg.style.color = 'var(--primary-green)';
+                        msg.innerText = result.message;
+                        setTimeout(() => { closePasswordModal(); }, 1500);
+                    } else {
+                        msg.style.color = '#ff4444';
+                        msg.innerText = result.message;
+                    }
+                } catch (e) {
+                    msg.style.color = '#ff4444';
+                    msg.innerText = 'Error: ' + e.message;
+                }
             }
         </script>
     </main>

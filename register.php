@@ -57,28 +57,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $is_payment_verified = false;
             $razorpay_payment_id = $_POST['razorpay_payment_id'] ?? null;
             
+            // Calculate expected price
+            $plans = json_decode(file_get_contents('plans.json'), true);
+            $selectedPlanFound = null;
+            foreach($plans as $p) { if($p['id'] == $plan) { $selectedPlanFound = $p; break; } }
+            
+            $expectedTotal = 0;
+            if ($selectedPlanFound) {
+                $monthlyPrice = (float)$selectedPlanFound['price'];
+                $subtotal = $monthlyPrice * $duration;
+                $discount = 0;
+                if($duration == 3) $discount = 0.05;
+                else if($duration == 6) $discount = 0.10;
+                else if($duration == 12) $discount = 0.20;
+                $expectedTotal = round(($subtotal * (1 - $discount)) * 100);
+            }
+
             // Secure server-side check with SDK if payment_id is provided
             if ($razorpay_payment_id) {
                 try {
                     $api = getRazorpayApi();
                     $payment = $api->payment->fetch($razorpay_payment_id);
                     
-                    // Recalculate expected price to prevent tampering
-                    $plans = json_decode(file_get_contents('plans.json'), true);
-                    $selectedPlanFound = null;
-                    foreach($plans as $p) { if($p['id'] == $plan) { $selectedPlanFound = $p; break; } }
-                    
                     if (RAZORPAY_TEST_SIMULATION === true) {
                         $is_payment_verified = true;
                     } else if($selectedPlanFound) {
-                        $monthlyPrice = (float)$selectedPlanFound['price'];
-                        $subtotal = $monthlyPrice * $duration;
-                        $discount = 0;
-                        if($duration == 3) $discount = 0.05;
-                        else if($duration == 6) $discount = 0.10;
-                        else if($duration == 12) $discount = 0.20;
-                        $expectedTotal = round(($subtotal * (1 - $discount)) * 100);
-                        
                         if ($payment->amount == $expectedTotal && ($payment->status === 'captured' || $payment->status === 'authorized')) {
                             $is_payment_verified = true;
                         }
@@ -97,6 +100,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Determine expiration date if needed, or just save duration if column exists (omitted for safety)
                 $stmt = $pdo->prepare("INSERT INTO USERS (full_name, email, password_hash, otp, plan, is_verified, razorpay_payment_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$name, $email, $hashed_password, $otp, $plan, $is_verified_int, $_POST['razorpay_payment_id'] ?? null]);
+                
+                $new_user_id = $pdo->lastInsertId();
+                if ($is_payment_verified && $expectedTotal > 0) {
+                    $amount_paid = $expectedTotal / 100;
+                    $stmt2 = $pdo->prepare("INSERT INTO PAYMENTS (user_id, amount, payment_method, payment_status, paid_at) VALUES (?, ?, 'Card', 'Success', NOW())");
+                    $stmt2->execute([$new_user_id, $amount_paid]);
+                }
             }
 
             // 2. Save to JSON

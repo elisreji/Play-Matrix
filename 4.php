@@ -1,3 +1,4 @@
+<?php require_once 'razorpay_config.php'; ?>
 <!-- Flatpickr CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
@@ -429,16 +430,9 @@
         color: #000 !important;
     }
 
-    @media (max-width: 900px) {
-        .booking-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .form-row {
-            grid-template-columns: 1fr;
-        }
-    }
-</style>
+    </style>
+    <!-- Razorpay SDK -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
 
 <body>
@@ -708,8 +702,36 @@
 
             proceedBtn.textContent = `Proceed INR ${totalCartPrice.toFixed(2)}`;
             proceedBtn.onclick = () => {
-                document.getElementById('successVenue').textContent = cart[0].venue;
-                document.getElementById('successModal').style.display = 'flex';
+                const options = {
+                    "key": "<?php echo RAZORPAY_KEY_ID; ?>",
+                    "amount": Math.round(totalCartPrice * 100),
+                    "currency": "INR",
+                    "name": "PlayMatrix Booking",
+                    "description": cart[0].venue + (cart.length > 1 ? " & more" : ""),
+                    "handler": function (response) {
+                        // Securely confirm booking on backend
+                        fetch('confirm_booking.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                payment_id: response.razorpay_payment_id,
+                                cart: cart
+                            })
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                document.getElementById('successVenue').textContent = cart[0].venue;
+                                document.getElementById('successModal').style.display = 'flex';
+                            } else {
+                                alert("Booking failed: " + data.message);
+                            }
+                        });
+                    },
+                    "theme": { "color": "#39ff14" }
+                };
+                const rzp = new Razorpay(options);
+                rzp.open();
             };
         }
     </script>
