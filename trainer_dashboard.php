@@ -5,7 +5,7 @@ if (!isset($_SESSION['user'])) {
     exit;
 }
 
-require_once 'includes/db_connect.php';
+require_once 'db_connect.php';
 
 $email = $_SESSION['user'];
 $userName = 'Trainer';
@@ -407,172 +407,37 @@ if ($pdo) {
             border-color: var(--primary-green);
         }
 
-        /* Flatpickr Customization */
-        .flatpickr-calendar {
-            background: #121212 !important;
-            border: 1px solid var(--primary-green) !important;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
-            font-family: 'Outfit', sans-serif !important;
-        }
-
-        .flatpickr-day.selected,
-        .flatpickr-day.startRange,
-        .flatpickr-day.endRange {
-            background: var(--primary-green) !important;
-            border-color: var(--primary-green) !important;
-            color: #000 !important;
-        }
-
-        .flatpickr-day:hover {
-            background: rgba(57, 255, 20, 0.2) !important;
-        }
-
-        .flatpickr-time input:focus {
-            background: rgba(57, 255, 20, 0.1) !important;
-        }
-
-        .flatpickr-current-month,
-        .flatpickr-month {
-            color: #fff !important;
-            fill: #fff !important;
-        }
-
-        .flatpickr-weekday {
-            color: var(--text-gray) !important;
-        }
-
-        .flatpickr-day {
-            color: #fff !important;
-        }
-
-        .flatpickr-time input,
-        .flatpickr-time .flatpickr-am-pm {
-            color: #fff !important;
-        }
-
-        /* Chat Interface Styles */
-        .chat-container {
-            display: flex;
-            height: calc(100vh - 200px);
-            background: #0a0a0a;
-            border-radius: 20px;
-            border: 1px solid var(--glass-border);
-            overflow: hidden;
-        }
-        .chat-sidebar {
-            width: 320px;
-            border-right: 1px solid var(--glass-border);
+        #toastContainer {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 99999;
             display: flex;
             flex-direction: column;
-            background: rgba(255, 255, 255, 0.02);
+            gap: 10px;
         }
-        .chat-sidebar-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--glass-border);
-        }
-        .chat-user-list {
-            flex-grow: 1;
-            overflow-y: auto;
-        }
-        .chat-user-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 1rem 1.5rem;
-            cursor: pointer;
-            transition: 0.3s;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
-        }
-        .chat-user-item:hover {
-            background: rgba(57, 255, 20, 0.05);
-        }
-        .chat-user-item.active {
-            background: rgba(57, 255, 20, 0.1);
-            border-left: 3px solid var(--primary-green);
-        }
-        .chat-main {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
-        .chat-main-header {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--glass-border);
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: rgba(0,0,0,0.3);
-        }
-        .chat-messages {
-            flex-grow: 1;
-            padding: 1.5rem;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-        .message-bubble {
-            max-width: 70%;
-            padding: 0.8rem 1.2rem;
-            border-radius: 15px;
-            font-size: 0.95rem;
-            line-height: 1.4;
-        }
-        .message-sent {
-            align-self: flex-end;
-            background: var(--primary-green);
-            color: #000;
-            border-bottom-right-radius: 2px;
-        }
-        .message-received {
-            align-self: flex-start;
-            background: #1a1a1a;
-            color: #fff;
-            border: 1px solid var(--glass-border);
-            border-bottom-left-radius: 2px;
-        }
-        .message-time {
-            font-size: 0.7rem;
-            opacity: 0.6;
-            margin-top: 5px;
-            text-align: right;
-        }
-        .chat-input-area {
-            padding: 1.5rem;
-            border-top: 1px solid var(--glass-border);
-            display: flex;
-            gap: 15px;
-            background: rgba(0,0,0,0.3);
-        }
-        .chat-input {
-            flex-grow: 1;
+
+        .toast {
             background: #121212;
-            border: 1px solid var(--glass-border);
-            padding: 0.8rem 1.2rem;
-            border-radius: 50px;
             color: white;
-            outline: none;
-        }
-        .chat-send-btn {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            background: var(--primary-green);
-            color: #000;
+            padding: 16px 24px;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
             display: flex;
             align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            border: none;
+            gap: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            animation: toastSlideIn 0.3s ease-out;
+            transition: 0.5s;
         }
-        .unread-badge {
-            background: #ff4b2b;
-            color: white;
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-weight: 700;
+
+        .toast.error {
+            border-color: #ff4444;
+        }
+
+        @keyframes toastSlideIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
     </style>
 </head>
@@ -630,7 +495,7 @@ if ($pdo) {
                         }
                         if ($pendingCount > 0): 
                     ?>
-                        <span class="unread-badge"><?php echo $pendingCount; ?></span>
+                        <span class="unread-badge" style="background: #ff4b2b; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; font-weight: 700;"><?php echo $pendingCount; ?></span>
                     <?php endif; ?>
                 </div>
             </li>
@@ -662,7 +527,6 @@ if ($pdo) {
         </ul>
 
         <div class="logout-section">
-
             <a href="logout.php" class="nav-link">
                 <i class="fa-solid fa-right-from-bracket"></i>
                 <span>Logout</span>
@@ -789,15 +653,12 @@ if ($pdo) {
             </div>
         </div>
 
-
-
         <!-- 3. EVENTS SECTION -->
         <div id="events" class="dashboard-section">
             <div class="section-header">
                 <h2>My Events</h2>
                 <button class="btn-primary" onclick="openEventModal()"><i class="fa-solid fa-plus"></i> New Event</button>
             </div>
-
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
                 <?php if (empty($programs)): ?>
                     <p style="color: var(--text-gray); grid-column: 1/-1; text-align:center; padding: 3rem 0;">
@@ -834,7 +695,6 @@ if ($pdo) {
                     <?php endforeach; ?>
                 <?php endif; ?>
 
-                <!-- Add Event card -->
                 <div class="stat-card" onclick="openEventModal()"
                     style="border-style: dashed; display: flex; align-items: center; justify-content: center; flex-direction: column; cursor: pointer; opacity: 0.6; padding: 2rem; gap: 10px; min-height: 200px;">
                     <i class="fa-solid fa-plus" style="font-size: 2rem; color: var(--primary-green);"></i>
@@ -949,7 +809,6 @@ if ($pdo) {
             </div>
         </div>
 
-        <!-- 5. REQUESTS SECTION -->
         <div id="requests" class="dashboard-section">
             <div class="section-header">
                 <h2>Incoming Requests</h2>
@@ -1006,7 +865,6 @@ if ($pdo) {
             </div>
         </div>
 
-        <!-- 6. STUDENTS SECTION -->
         <div id="students" class="dashboard-section">
             <div class="section-header">
                 <h2>My Athletes</h2>
@@ -1041,8 +899,6 @@ if ($pdo) {
             </div>
         </div>
 
-
-        <!-- 9. RESOURCES SECTION -->
         <div id="resources" class="dashboard-section">
             <div class="section-header">
                 <h2>Resources (Plans & Validations)</h2>
@@ -1081,10 +937,6 @@ if ($pdo) {
             </div>
         </div>
 
-        <!-- 10. EARNINGS SECTION -->
-
-
-        <!-- 11. HEALTH PROFILE SECTION -->
         <div id="health" class="dashboard-section">
             <div class="section-header">
                 <h2>Health Profile</h2>
@@ -1136,116 +988,134 @@ if ($pdo) {
 
     </main>
 
-    <script>
-        let chatRefreshInterval = null;
-
-        function showSection(sectionId, element) {
-            document.querySelectorAll('.dashboard-section').forEach(sec => sec.classList.remove('active'));
-            const target = document.getElementById(sectionId);
-            if (target) target.classList.add('active');
-            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-            if (element) element.classList.add('active');
-        }
-
-        async function saveProfile() {
-            const form = document.getElementById('profileForm');
-            
-            // Basic HTML5 validation check
-            if (!form.checkValidity()) {
-                form.reportValidity();
-                return;
-            }
-
-            const formData = new FormData(form);
-
-            try {
-                const response = await fetch('api/update_trainer_profile.php', {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                
-                if (result.success) {
-                    showToast(result.message);
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    showToast(result.message, true);
-                }
-            } catch (err) {
-                console.error(err);
-                showToast('Connection error', true);
-            }
-        }
-
-        async function updateSchedule() {
-            const form = document.getElementById('scheduleForm');
-            const rows = form.querySelectorAll('.schedule-row');
-            const schedule = [];
-
-            rows.forEach(row => {
-                schedule.push({
-                    day: row.querySelector('input[name="day[]"]').value,
-                    start: row.querySelector('input[name="start[]"]').value,
-                    end: row.querySelector('input[name="end[]"]').value,
-                    active: row.querySelector('input[name="active[]"]').checked
-                });
-            });
-
-            try {
-                const response = await fetch('api/handle_schedule.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ schedule })
-                });
-                const result = await response.json();
-                alert(result.message);
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-
-        async function saveEvent(data) {
-            try {
-                const response = await fetch('api/handle_programs.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'create', ...data })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    window.location.href = 'finish_event_setup.php?id=' + result.id;
-                } else {
-                    alert(result.message);
-                }
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-        async function updateBooking(bookingId, status) {
-            if (!confirm(`Mark this booking as ${status}?`)) return;
-
-            try {
-                const response = await fetch('api/update_booking_status.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ bookingId, status })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    alert(result.message);
-                    location.reload();
-                } else {
-                    alert(result.message);
-                }
-            } catch (err) {
-                console.error(err);
-            }
-        }
-    </script>
-
     <div id="toastContainer"></div>
+
+    <div id="eventModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); backdrop-filter: blur(12px); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+        <div class="card" style="width: 100%; max-width: 800px; max-height: 90vh; overflow-y: auto; border: 1px solid rgba(57, 255, 20, 0.3); border-radius: 24px; background: #0a0a0a; position: relative; animation: modalSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1); padding: 0;">
+            
+            <div style="position: sticky; top: 0; background: #0a0a0a; padding: 25px 35px; border-bottom: 1px solid var(--glass-border); z-index: 10; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 style="font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px;">Create Tournament</h2>
+                    <p style="color: var(--text-gray); font-size: 0.9rem;">Host a competition and manage participants.</p>
+                </div>
+                <button onclick="closeEventModal()" style="background: rgba(255,255,255,0.05); border: none; color: #fff; width: 40px; height: 40px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <form id="eventForm" style="padding: 35px;">
+                <input type="hidden" name="is_tournament" value="1">
+                
+                <div style="margin-bottom: 30px;">
+                    <h4 style="color: var(--primary-green); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-info-circle"></i> Basic Information
+                    </h4>
+                    <div class="form-group">
+                        <label>Tournament / Event Name</label>
+                        <input type="text" name="title" required placeholder="e.g. Matrix Summer Cricket Cup 2026">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label>Sport Type</label>
+                            <select name="type">
+                                <option value="Cricket">Cricket</option>
+                                <option value="Football">Football</option>
+                                <option value="Badminton">Badminton</option>
+                                <option value="Tennis">Tennis</option>
+                                <option value="Basketball">Basketball</option>
+                                <option value="Swimming">Swimming</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Venue / Location</label>
+                            <input type="text" name="location" required placeholder="e.g. Golden Turf, MG Road">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Tournament Description</label>
+                        <textarea name="description" rows="3" placeholder="Explain the rules, eligibility and details..."></textarea>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 30px;">
+                    <h4 style="color: var(--primary-green); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-calendar-days"></i> Schedule Details
+                    </h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" name="start_date" id="start_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Date</label>
+                            <input type="date" name="end_date" id="end_date" required>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label>Registration Deadline</label>
+                            <input type="date" name="registration_deadline" id="reg_deadline" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Match Time (Starting From)</label>
+                            <input type="time" name="event_time" id="event_time" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 30px;">
+                    <h4 style="color: var(--primary-green); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-coins"></i> Fees & Participants
+                    </h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label>Entry Fee (₹)</label>
+                            <input type="number" name="price" placeholder="0.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Teams / Participants</label>
+                            <input type="number" name="max_participants" placeholder="16" value="16">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 30px;">
+                    <h4 style="color: var(--primary-green); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-trophy"></i> Prizes & Format
+                    </h4>
+                    <div class="form-group">
+                        <label>Tournament Format</label>
+                        <select name="tournament_format">
+                            <option value="Knockout">Knockout</option>
+                            <option value="League">League</option>
+                            <option value="Round Robin">Round Robin</option>
+                            <option value="Double Elimination">Double Elimination</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Prize Details</label>
+                        <textarea name="prize_details" rows="2" placeholder="e.g. ₹5000 + Trophy for Winner"></textarea>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label>Contact Information</label>
+                            <input type="text" name="contact_info" placeholder="+91 98765 43210">
+                        </div>
+                        <div class="form-group">
+                            <label>Tournament Banner / Image</label>
+                            <input type="file" name="banner" accept="image/*" style="padding: 10px;">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+                    <button type="button" onclick="submitTournamentForm(this)" class="btn-primary" style="height: 55px; font-size: 1.1rem; font-weight: 800; box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);">
+                        <i class="fa-solid fa-plus-circle"></i> Create Tournament
+                    </button>
+                    <button type="button" onclick="closeEventModal()" class="btn-outline" style="height: 55px; font-size: 1rem;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script>
         function showToast(message, isError = false) {
@@ -1263,84 +1133,148 @@ if ($pdo) {
             }, 3000);
         }
 
+        function showSection(sectionId, element) {
+            document.querySelectorAll('.dashboard-section').forEach(sec => sec.style.display = 'none');
+            const target = document.getElementById(sectionId);
+            if (target) target.style.display = 'block';
+            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+            if (element) element.classList.add('active');
+        }
+
+        async function saveProfile() {
+            const form = document.getElementById('profileForm');
+            if (!form.checkValidity()) { form.reportValidity(); return; }
+            const formData = new FormData(form);
+            try {
+                const response = await fetch('api/update_trainer_profile.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                if (result.success) { showToast(result.message); setTimeout(() => location.reload(), 1500); }
+                else { showToast(result.message, true); }
+            } catch (err) { showToast('Connection error', true); }
+        }
+
+        async function updateSchedule() {
+            const form = document.getElementById('scheduleForm');
+            const rows = form.querySelectorAll('.schedule-row');
+            const schedule = [];
+            rows.forEach(row => {
+                schedule.push({
+                    day: row.querySelector('input[name="day[]"]').value,
+                    start: row.querySelector('input[name="start[]"]').value,
+                    end: row.querySelector('input[name="end[]"]').value,
+                    active: row.querySelector('input[name="active[]"]').checked
+                });
+            });
+            try {
+                const response = await fetch('api/handle_schedule.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ schedule })
+                });
+                const result = await response.json();
+                alert(result.message);
+            } catch (err) { console.error(err); }
+        }
+
+        function openEventModal() {
+            if (!document.getElementById('start_date')._flatpickr) { flatpickr("#start_date", { minDate: "today", dateFormat: "Y-m-d" }); }
+            if (!document.getElementById('end_date')._flatpickr) { flatpickr("#end_date", { minDate: "today", dateFormat: "Y-m-d" }); }
+            if (!document.getElementById('reg_deadline')._flatpickr) { flatpickr("#reg_deadline", { minDate: "today", dateFormat: "Y-m-d" }); }
+            if (!document.getElementById('event_time')._flatpickr) {
+                flatpickr("#event_time", {
+                    enableTime: true,
+                    noCalendar: true,
+                    dateFormat: "H:i",
+                    altInput: true,
+                    altFormat: "h:i K",
+                    time_24hr: false
+                });
+            }
+            document.getElementById('eventModal').style.display = 'flex';
+        }
+
+        function closeEventModal() { document.getElementById('eventModal').style.display = 'none'; }
+
+        async function submitTournamentForm(btn) {
+            const form = document.getElementById('eventForm');
+            const data = new FormData(form);
+            data.append('action', 'create');
+
+            if (!form.title.value || !form.start_date.value || !form.end_date.value || !form.location.value) {
+                 showToast("Please fill all required fields.", true);
+                 return;
+            }
+
+            const originalContent = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...';
+            
+            try {
+                const response = await fetch('api/handle_programs.php', { method: 'POST', body: data });
+                const result = await response.json();
+                if (result.success) { showToast("Tournament Created Successfully!"); setTimeout(() => location.reload(), 1500); }
+                else { showToast(result.message, true); btn.disabled = false; btn.innerHTML = originalContent; }
+            } catch (err) { showToast("System error occurred.", true); btn.disabled = false; btn.innerHTML = originalContent; }
+        }
+
+        async function updateBooking(bookingId, status) {
+            if (!confirm(`Mark this booking as ${status}?`)) return;
+            try {
+                const response = await fetch('api/update_booking_status.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bookingId, status })
+                });
+                const result = await response.json();
+                if (result.success) { alert(result.message); location.reload(); }
+                else { alert(result.message); }
+            } catch (err) { console.error(err); }
+        }
+
         async function processRequest(event, requestId, action) {
             const row = document.getElementById('req-row-' + requestId);
             const buttons = row.querySelectorAll('button');
-
-            // Visual feedback - disable buttons
             buttons.forEach(b => b.disabled = true);
-
             try {
                 const response = await fetch('api/handle_trainer_request.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ requestId: requestId, action: action })
                 });
-
                 const result = await response.json();
-
                 if (result.success) {
                     showToast(result.message);
-
-                    // Visual update of the row without reload
-                    row.classList.add('row-fade-out');
-                    const statusTd = row.cells[2];
-                    const actionTd = row.cells[3];
-
-                    const statusColor = action === 'Accepted' ? 'var(--primary-green)' : '#ff4444';
-                    statusTd.innerHTML = `<span class='status-pill' style='padding: 4px 10px; border-radius: 50px; font-size: 0.8rem; background: rgba(255,255,255,0.05); color: ${statusColor};'>${action}</span>`;
-                    actionTd.innerHTML = `<span style='color: var(--text-gray); font-size: 0.8rem; opacity: 0.6;'>Processed</span>`;
-
-                    setTimeout(() => {
-                        row.classList.remove('row-fade-out');
-                    }, 1000);
-                } else {
-                    showToast(result.message, true);
-                    buttons.forEach(b => b.disabled = false);
-                }
-            } catch (err) {
-                console.error(err);
-                showToast('Connection error. Please try again.', true);
-                buttons.forEach(b => b.disabled = false);
-            }
+                    row.cells[2].innerHTML = `<span class='status-pill' style='padding: 4px 10px; border-radius: 50px; font-size: 0.8rem; background: rgba(255,255,255,0.05); color: ${action === 'Accepted' ? 'var(--primary-green)' : '#ff4444'};'>${action}</span>`;
+                    row.cells[3].innerHTML = `<span style='color: var(--text-gray); font-size: 0.8rem; opacity: 0.6;'>Processed</span>`;
+                } else { showToast(result.message, true); buttons.forEach(b => b.disabled = false); }
+            } catch (err) { showToast('Connection error. Please try again.', true); buttons.forEach(b => b.disabled = false); }
         }
 
-        function triggerUpload() {
-            document.getElementById('resourceInput').click();
-        }
+        function triggerUpload() { document.getElementById('resourceInput').click(); }
 
         async function uploadResource(input) {
             if (!input.files || !input.files[0]) return;
             const file = input.files[0];
             const title = prompt("Enter Resource Title:", file.name);
             if (!title) return;
-
             const formData = new FormData();
             formData.append('resource', file);
             formData.append('title', title);
-            formData.append('type', 'Workout Plan'); // Default
-
+            formData.append('type', 'Workout Plan');
             try {
-                const response = await fetch('api/upload_resource.php', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('api/upload_resource.php', { method: 'POST', body: formData });
                 const result = await response.json();
                 alert(result.message);
                 if (result.success) location.reload();
-            } catch (err) {
-                console.error(err);
-            }
+            } catch (err) { console.error(err); }
         }
 
         async function updateHealthProfile() {
             const height = prompt("Enter Height (cm):", "<?php echo $trainerProfile['height'] ?? ''; ?>");
-            const weight = prompt("Enter Weight (kg):", "<?php echo $trainerProfile['weight'] ?? ''; ?>");
+            const weight = prompt("Enter Height (kg):", "<?php echo $trainerProfile['weight'] ?? ''; ?>");
             const blood = prompt("Enter Blood Group:", "<?php echo $trainerProfile['blood_group'] ?? ''; ?>");
             const conditions = prompt("Enter Medical Conditions/Allergies:", "<?php echo $trainerProfile['medical_conditions'] ?? ''; ?>");
-
             if (height === null) return;
-
             try {
                 const response = await fetch('api/update_health_profile.php', {
                     method: 'POST',
@@ -1350,215 +1284,7 @@ if ($pdo) {
                 const result = await response.json();
                 alert(result.message);
                 if (result.success) location.reload();
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-        // Initial load check
-        window.onload = function () {
-            const hash = window.location.hash.replace('#', '');
-            if (hash) {
-                const navLink = document.querySelector(`.nav-link[onclick*="'${hash}'"]`);
-                showSection(hash, navLink);
-            }
-        };
-    </script>
-    <!-- Event Creation Modal -->
-    <div id="eventModal"
-        style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
-        <div class="card"
-            style="width: 100%; max-width: 500px; border-color: var(--primary-green); position: relative; animation: modalSlideUp 0.4s ease-out;">
-            <button onclick="closeEventModal()"
-                style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: var(--text-gray); font-size: 1.2rem; cursor: pointer;"><i
-                    class="fa-solid fa-times"></i></button>
-            <h2 style="margin-bottom: 5px;">Create New Event</h2>
-            <p style="color: var(--text-gray); font-size: 0.9rem; margin-bottom: 2rem;">Fill in the details for your
-                coaching event.</p>
-
-            <form id="eventForm">
-                <div class="form-group">
-                    <label>Event Name</label>
-                    <input type="text" name="title" required placeholder="e.g. Pro Tennis Workshop">
-                </div>
-
-                <div class="form-group">
-                    <label>Date</label>
-                    <div style="position: relative;">
-                        <input type="text" name="event_date" id="event_date" required placeholder="Select Date"
-                            style="padding-right: 40px;">
-                        <i class="fa-solid fa-calendar"
-                            style="position: absolute; right: 15px; top: 15px; color: var(--text-gray); pointer-events: none;"></i>
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label>Start Time</label>
-                        <div style="position: relative;">
-                            <input type="text" name="event_time" id="event_time" required placeholder="Set Time"
-                                style="padding-right: 40px;">
-                            <i class="fa-solid fa-clock"
-                                style="position: absolute; right: 15px; top: 15px; color: var(--text-gray); pointer-events: none;"></i>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>End Time</label>
-                        <div style="position: relative;">
-                            <input type="text" name="event_end_time" id="event_end_time" required placeholder="Set Time"
-                                style="padding-right: 40px;">
-                            <i class="fa-solid fa-clock"
-                                style="position: absolute; right: 15px; top: 15px; color: var(--text-gray); pointer-events: none;"></i>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>Location / Where it takes place</label>
-                    <input type="text" name="location" required placeholder="e.g. Center Court, AJCE or Online">
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label>Price per person (₹)</label>
-                        <input type="number" step="0.01" name="price" value="500">
-                    </div>
-                    <div class="form-group">
-                        <label>Category</label>
-                        <select name="type">
-                            <option value="Badminton">Badminton</option>
-                            <option value="Football">Football</option>
-                            <option value="Cricket">Cricket</option>
-                            <option value="Tennis">Tennis</option>
-                            <option value="Basketball">Basketball</option>
-                            <option value="Yoga">Yoga</option>
-                            <option value="HIIT">HIIT</option>
-                            <option value="Wellness">Wellness</option>
-                            <option value="Fitness">Fitness</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                </div>
-
-                <button type="button" onclick="submitEventForm()" class="btn-primary"
-                    style="width: 100%; padding: 15px; margin-top: 10px;">
-                    <i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Publish Event
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <style>
-        @keyframes modalSlideUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-    </style>
-
-    <script>
-        let datePicker, startTimePicker, endTimePicker;
-
-        function openEventModal() {
-            // Initialize Pickers
-            if (!datePicker) {
-                datePicker = flatpickr("#event_date", {
-                    minDate: "today",
-                    dateFormat: "Y-m-d",
-                    onChange: function (selectedDates, dateStr, instance) {
-                        // Optional: extra validation on change
-                    }
-                });
-            }
-
-            if (!startTimePicker) {
-                startTimePicker = flatpickr("#event_time", {
-                    enableTime: true,
-                    noCalendar: true,
-                    dateFormat: "H:i",
-                    altInput: true,
-                    altFormat: "h:i K",
-                    time_24hr: false
-                });
-            }
-
-            if (!endTimePicker) {
-                endTimePicker = flatpickr("#event_end_time", {
-                    enableTime: true,
-                    noCalendar: true,
-                    dateFormat: "H:i",
-                    altInput: true,
-                    altFormat: "h:i K",
-                    time_24hr: false
-                });
-            }
-
-            document.getElementById('eventModal').style.display = 'flex';
-        }
-
-
-            const input = document.getElementById('chatInputMessage');
-            const message = input.value.trim();
-            if (!message || !selectedChatUser) return;
-            input.value = '';
-            try {
-                await fetch('api/send_message.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ receiver_email: selectedChatUser, message: message })
-                });
-                fetchMessages();
-            } catch (err) {
-                console.error('Error sending message:', err);
-            }
-        }
-
-        function closeEventModal() {
-            document.getElementById('eventModal').style.display = 'none';
-        }
-
-        async function submitEventForm() {
-            const form = document.getElementById('eventForm');
-            const data = {
-                action: 'create',
-                title: form.title.value,
-                event_date: form.event_date.value,
-                event_time: form.event_time.value,
-                event_end_time: form.event_end_time.value,
-                location: form.location.value,
-                price: form.price.value,
-                type: form.type.value,
-                duration_weeks: 1 // Default for single event
-            };
-
-            if (!data.title || !data.event_date || !data.event_time || !data.event_end_time || !data.location) {
-                alert('Please fill in all required fields.');
-                return;
-            }
-
-            // Date validation (Future check)
-            const now = new Date();
-            const selectedDateTime = new Date(data.event_date + 'T' + data.event_time);
-
-            if (selectedDateTime <= now) {
-                alert('Event must be in the future.');
-                return;
-            }
-
-            // Time range validation
-            if (data.event_end_time <= data.event_time) {
-                alert('End time must be after start time.');
-                return;
-            }
-
-            await saveEvent(data);
-            closeEventModal();
+            } catch (err) { console.error(err); }
         }
 
         async function deleteEvent(id) {
@@ -1570,16 +1296,18 @@ if ($pdo) {
                     body: JSON.stringify({ id })
                 });
                 const result = await res.json();
-                if (result.success) {
-                    alert('Event removed successfully.');
-                    location.reload();
-                } else {
-                    alert('Error: ' + result.message);
-                }
-            } catch (err) {
-                alert('An error occurred. Please try again.');
-            }
+                if (result.success) { alert('Event removed successfully.'); location.reload(); }
+                else { alert('Error: ' + result.message); }
+            } catch (err) { alert('An error occurred. Please try again.'); }
         }
+
+        window.onload = function () {
+            const hash = window.location.hash.replace('#', '');
+            if (hash) {
+                const navLink = document.querySelector(`.nav-link[onclick*="'${hash}'"]`);
+                showSection(hash, navLink);
+            }
+        };
     </script>
 </body>
 
